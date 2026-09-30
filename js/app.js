@@ -93,6 +93,14 @@ let memories = [];
 
 let currentViewerIndex = 0;
 
+let editingMemoryId = null;
+
+let pendingDeleteMemoryId = null;
+
+let isSavingMemory = false;
+
+let isDeletingMemory = false;
+
 let selectedUploadFile = null;
 
 let videoObserver = null;
@@ -192,6 +200,63 @@ const viewerNext =
 const closeViewerButton =
     document.getElementById("closeViewerButton");
 
+const editMemoryButton =
+    document.getElementById("editMemoryButton");
+
+const deleteMemoryButton =
+    document.getElementById("deleteMemoryButton");
+
+
+/* EDIT MEMORY */
+
+const editMemoryModal =
+    document.getElementById("editMemoryModal");
+
+const editMemoryForm =
+    document.getElementById("editMemoryForm");
+
+const editMemoryDate =
+    document.getElementById("editMemoryDate");
+
+const editMemoryCaption =
+    document.getElementById("editMemoryCaption");
+
+const editCalendarButton =
+    document.getElementById("editCalendarButton");
+
+const closeEditMemoryButton =
+    document.getElementById("closeEditMemoryButton");
+
+const cancelEditMemoryButton =
+    document.getElementById("cancelEditMemoryButton");
+
+const saveMemoryChangesButton =
+    document.getElementById("saveMemoryChangesButton");
+
+
+/* DELETE MEMORY */
+
+const deleteMemoryModal =
+    document.getElementById("deleteMemoryModal");
+
+const deleteMemoryPreview =
+    document.getElementById("deleteMemoryPreview");
+
+const deleteMemoryCaption =
+    document.getElementById("deleteMemoryCaption");
+
+const deleteMemoryDate =
+    document.getElementById("deleteMemoryDate");
+
+const closeDeleteMemoryButton =
+    document.getElementById("closeDeleteMemoryButton");
+
+const cancelDeleteMemoryButton =
+    document.getElementById("cancelDeleteMemoryButton");
+
+const confirmDeleteMemoryButton =
+    document.getElementById("confirmDeleteMemoryButton");
+
 
 /* UPLOAD */
 
@@ -225,25 +290,32 @@ const calendarButton =
     );
 
 
-calendarButton.addEventListener(
-    "click",
-    () => {
+function openCalendarPicker(input) {
 
-        if (
-            typeof memoryDate.showPicker
-            === "function"
-        ) {
+    if (
+        typeof input.showPicker
+        === "function"
+    ) {
 
-            memoryDate.showPicker();
+        input.showPicker();
 
-        } else {
+    } else {
 
-            memoryDate.focus();
-            memoryDate.click();
-
-        }
+        input.focus();
+        input.click();
 
     }
+}
+
+calendarButton.addEventListener(
+    "click",
+    () => openCalendarPicker(memoryDate)
+);
+
+
+editCalendarButton.addEventListener(
+    "click",
+    () => openCalendarPicker(editMemoryDate)
 );
 
 
@@ -1879,6 +1951,378 @@ closeViewerButton.addEventListener(
 
 
 /* =========================================================
+   EDIT AND DELETE MEMORY
+   ========================================================= */
+
+function openEditMemoryModal(id) {
+
+    const memory =
+        getMemoryById(id);
+
+
+    if (!memory) {
+        showToast("Memory could not be found.");
+        return;
+    }
+
+
+    editingMemoryId = id;
+
+    editMemoryDate.value = memory.date;
+
+    editMemoryCaption.value = memory.caption || "";
+
+    openModal(editMemoryModal);
+}
+
+
+function closeEditMemoryModal() {
+
+    if (isSavingMemory) {
+        return;
+    }
+
+
+    const id = editingMemoryId;
+
+    editingMemoryId = null;
+
+    closeModal(editMemoryModal);
+
+
+    if (id && getMemoryById(id)) {
+        openViewerById(id);
+    }
+}
+
+
+editMemoryButton.addEventListener(
+    "click",
+    () => openEditMemoryModal(
+        viewerFavoriteButton.dataset.id
+    )
+);
+
+
+closeEditMemoryButton.addEventListener(
+    "click",
+    closeEditMemoryModal
+);
+
+
+cancelEditMemoryButton.addEventListener(
+    "click",
+    closeEditMemoryModal
+);
+
+
+document
+    .querySelector("[data-close-edit]")
+    .addEventListener(
+        "click",
+        closeEditMemoryModal
+    );
+
+
+editMemoryForm.addEventListener(
+    "submit",
+    async event => {
+
+        event.preventDefault();
+
+
+        if (isSavingMemory || !editingMemoryId) {
+            return;
+        }
+
+
+        const memoryId = editingMemoryId;
+
+        const nextDate = editMemoryDate.value;
+
+        const nextCaption = editMemoryCaption.value.trim();
+
+
+        if (!nextDate) {
+            showToast("Choose a date.");
+            return;
+        }
+
+
+        isSavingMemory = true;
+
+        saveMemoryChangesButton.disabled = true;
+
+        closeEditMemoryButton.disabled = true;
+
+        cancelEditMemoryButton.disabled = true;
+
+        saveMemoryChangesButton.textContent = "SAVING...";
+
+
+        try {
+
+            const response = await fetch(
+                `${API_URL}/api/memories/${encodeURIComponent(memoryId)}`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        caption: nextCaption,
+                        date: nextDate
+                    })
+                }
+            );
+
+
+            const data = await response.json().catch(() => ({}));
+
+
+            if (!response.ok) {
+                throw new Error(
+                    data.error || data.message || "Could not update memory."
+                );
+            }
+
+
+            const memoryIndex = memories.findIndex(
+                memory => memory.id === memoryId
+            );
+
+
+            if (memoryIndex === -1) {
+                throw new Error("Memory could not be found.");
+            }
+
+
+            const currentMemory = memories[memoryIndex];
+
+            const returnedMemory =
+                data.memory || data.updatedMemory || data;
+
+
+            memories[memoryIndex] = {
+                ...currentMemory,
+                ...returnedMemory,
+                id: memoryId,
+                caption: returnedMemory.caption ?? nextCaption,
+                date: returnedMemory.date ?? nextDate
+            };
+
+
+            buildGallery();
+
+            updateTimeline();
+
+            editingMemoryId = null;
+
+            closeModal(editMemoryModal);
+
+            openViewerById(memoryId);
+
+            showToast("Memory updated");
+
+        }
+
+        catch (error) {
+
+            console.error("Memory update failed:", error);
+
+            showToast(error.message || "Could not update memory.");
+
+        }
+
+        finally {
+
+            isSavingMemory = false;
+
+            saveMemoryChangesButton.disabled = false;
+
+            closeEditMemoryButton.disabled = false;
+
+            cancelEditMemoryButton.disabled = false;
+
+            saveMemoryChangesButton.textContent = "SAVE CHANGES";
+        }
+
+    }
+);
+
+
+function openDeleteMemoryModal(id) {
+
+    const memory =
+        getMemoryById(id);
+
+
+    if (!memory) {
+        showToast("Memory could not be found.");
+        return;
+    }
+
+
+    pendingDeleteMemoryId = id;
+
+    deleteMemoryPreview.innerHTML =
+        createSmallPreview(memory, false);
+
+    deleteMemoryCaption.textContent =
+        memory.caption || "Untitled memory";
+
+    deleteMemoryDate.textContent =
+        formatDate(memory.date);
+
+    openModal(deleteMemoryModal);
+}
+
+
+function closeDeleteMemoryModal() {
+
+    if (isDeletingMemory) {
+        return;
+    }
+
+
+    const id = pendingDeleteMemoryId;
+
+    pendingDeleteMemoryId = null;
+
+    closeModal(deleteMemoryModal);
+
+
+    if (id && getMemoryById(id)) {
+        openViewerById(id);
+    }
+}
+
+
+deleteMemoryButton.addEventListener(
+    "click",
+    () => openDeleteMemoryModal(
+        viewerFavoriteButton.dataset.id
+    )
+);
+
+
+closeDeleteMemoryButton.addEventListener(
+    "click",
+    closeDeleteMemoryModal
+);
+
+
+cancelDeleteMemoryButton.addEventListener(
+    "click",
+    closeDeleteMemoryModal
+);
+
+
+document
+    .querySelector("[data-close-delete]")
+    .addEventListener(
+        "click",
+        closeDeleteMemoryModal
+    );
+
+
+confirmDeleteMemoryButton.addEventListener(
+    "click",
+    async () => {
+
+        if (isDeletingMemory || !pendingDeleteMemoryId) {
+            return;
+        }
+
+
+        const memoryId = pendingDeleteMemoryId;
+
+
+        if (!getMemoryById(memoryId)) {
+            pendingDeleteMemoryId = null;
+            closeModal(deleteMemoryModal);
+            showToast("Memory could not be found.");
+            return;
+        }
+
+
+        isDeletingMemory = true;
+
+        confirmDeleteMemoryButton.disabled = true;
+
+        closeDeleteMemoryButton.disabled = true;
+
+        cancelDeleteMemoryButton.disabled = true;
+
+        confirmDeleteMemoryButton.textContent = "DELETING...";
+
+
+        try {
+
+            const response = await fetch(
+                `${API_URL}/api/memories/${encodeURIComponent(memoryId)}`,
+                { method: "DELETE" }
+            );
+
+
+            const data = await response.json().catch(() => ({}));
+
+
+            if (!response.ok) {
+                throw new Error(
+                    data.error || data.message || "Could not delete memory."
+                );
+            }
+
+
+            memories = memories.filter(
+                memory => memory.id !== memoryId
+            );
+
+            saveFavoriteIds(
+                getFavoriteIds().filter(id => id !== memoryId)
+            );
+
+            buildGallery();
+
+            updateTimeline();
+
+            pendingDeleteMemoryId = null;
+
+            closeModal(deleteMemoryModal);
+
+            closeModal(viewerModal);
+
+            showToast("Memory deleted");
+
+        }
+
+        catch (error) {
+
+            console.error("Memory deletion failed:", error);
+
+            showToast(error.message || "Could not delete memory.");
+
+        }
+
+        finally {
+
+            isDeletingMemory = false;
+
+            confirmDeleteMemoryButton.disabled = false;
+
+            closeDeleteMemoryButton.disabled = false;
+
+            cancelDeleteMemoryButton.disabled = false;
+
+            confirmDeleteMemoryButton.textContent = "DELETE MEMORY";
+        }
+
+    }
+);
+
+
+/* =========================================================
    UPLOAD
    ========================================================= */
 
@@ -2269,7 +2713,10 @@ closeUploadButton.addEventListener(
    SEARCH
    ========================================================= */
 
-function createSmallPreview(memory) {
+function createSmallPreview(
+    memory,
+    autoplayVideo = true
+) {
 
     if (
         memory.type === "image" ||
@@ -2296,9 +2743,9 @@ function createSmallPreview(memory) {
             <video
                 src="${memory.src}"
                 muted
-                autoplay
-                loop
+                ${autoplayVideo ? "autoplay loop" : ""}
                 playsinline
+                preload="metadata"
             ></video>
 
         `;
@@ -2803,7 +3250,25 @@ document.addEventListener(
                 event.key === "Escape"
             ) {
 
-                closeAllModals();
+                if (
+                    editMemoryModal.classList
+                        .contains("open")
+                ) {
+
+                    closeEditMemoryModal();
+
+                } else if (
+                    deleteMemoryModal.classList
+                        .contains("open")
+                ) {
+
+                    closeDeleteMemoryModal();
+
+                } else {
+
+                    closeAllModals();
+
+                }
             }
 
 

@@ -2368,3 +2368,425 @@ input[type="date"]
             0.001ms !important;
     }
 }
+
+
+/* VIEWER MEMORY ACTIONS */
+
+.viewer-information {
+    align-items: center;
+    gap: 18px;
+}
+
+.viewer-memory-details {
+    min-width: 0;
+}
+
+.viewer-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 7px;
+    flex-wrap: wrap;
+}
+
+.viewer-action-button,
+.viewer-actions .favorite-large {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: auto;
+    min-width: 44px;
+    height: 36px;
+    padding: 0 11px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--muted);
+    font: inherit;
+    font-size: 9px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition:
+        color 180ms ease,
+        border-color 180ms ease,
+        background-color 180ms ease,
+        transform 180ms ease;
+}
+
+.viewer-action-button:hover,
+.viewer-actions .favorite-large:hover {
+    transform: translateY(-1px);
+    border-color: rgba(255, 135, 95, 0.5);
+    background: rgba(255, 135, 95, 0.06);
+    color: var(--orange-light);
+}
+
+.viewer-action-button.delete {
+    border-color: rgba(191, 103, 112, 0.25);
+    color: #bd8588;
+}
+
+.viewer-action-button.delete:hover {
+    border-color: rgba(191, 103, 112, 0.55);
+    background: rgba(191, 103, 112, 0.08);
+    color: #d49a9b;
+}
+
+.viewer-actions .favorite-large {
+    border-radius: 3px;
+    font-size: 16px;
+    letter-spacing: 0;
+}
+
+.viewer-actions .favorite-large::after {
+    content: "FAVORITE";
+    font-size: 9px;
+    letter-spacing: 1px;
+}
+
+.viewer-actions .favorite-large.favorite {
+    border-color: rgba(255, 117, 159, 0.45);
+    color: var(--pink-light);
+}
+
+
+/* EDIT AND DELETE DIALOGS */
+
+.modal.memory-action-modal {
+    z-index: 3100;
+    padding: 22px;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms ease, visibility 180ms ease;
+}
+
+.modal.memory-action-modal.open {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.memory-action-dialog {
+    position: relative;
+    z-index: 2;
+    width: min(100%, 440px);
+    padding: 34px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background:
+        radial-gradient(circle at 100% 0%, rgba(255, 135, 95, 0.07), transparent 42%),
+        var(--background-soft);
+    color: var(--cream);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+    transform: translateY(7px) scale(0.99);
+    transition: transform 180ms ease;
+}
+
+.modal.memory-action-modal.open .memory-action-dialog {
+    transform: translateY(0) scale(1);
+}
+
+.memory-action-close {
+    position: absolute;
+    z-index: 6;
+    top: 12px;
+    right: 13px;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 21px;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 180ms ease, border-color 180ms ease;
+}
+
+.memory-action-close:hover {
+    border-color: rgba(255, 135, 95, 0.45);
+    color: var(--orange-light);
+}
+
+.memory-action-dialog .eyebrow {
+    margin-bottom: 9px;
+    color: var(--orange);
+    font-size: 9px;
+    letter-spacing: 2px;
+}
+
+.memory-action-dialog h2 {
+    max-width: calc(100% - 20px);
+    margin: 0 0 26px;
+    color: var(--cream);
+    font-family: Georgia, serif;
+    font-size: 27px;
+    font-weight: 400;
+    line-height: 1.2;
+}
+
+.memory-action-form {
+    display: grid;
+    gap: 19px;
+}
+
+.memory-action-field {
+    display: grid;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+}
+
+.memory-action-field input,
+.edit-date-control {
+    width: 100%;
+    min-width: 0;
+}
+
+.memory-action-field > input,
+.edit-date-control input {
+    min-height: 43px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    outline: none;
+    background: rgba(255, 255, 255, 0.025);
+    color: var(--cream);
+    color-scheme: dark;
+    font: inherit;
+    font-size: 13px;
+    letter-spacing: 0;
+    text-transform: none;
+    transition: border-color 180ms ease, background-color 180ms ease;
+}
+
+.memory-action-field > input:focus,
+.edit-date-control input:focus {
+    border-color: rgba(255, 135, 95, 0.62);
+    background: rgba(255, 135, 95, 0.035);
+}
+
+.edit-date-control {
+    display: flex;
+    align-items: stretch;
+}
+
+.edit-date-control input {
+    flex: 1;
+    border-radius: 3px 0 0 3px;
+}
+
+.edit-date-control .calendar-button {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    border: 1px solid var(--border);
+    border-left: 0;
+    border-radius: 0 3px 3px 0;
+    background: rgba(255, 255, 255, 0.025);
+    color: var(--orange-light);
+    cursor: pointer;
+}
+
+.edit-date-control .calendar-button svg {
+    width: 17px;
+    height: 17px;
+}
+
+.memory-action-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 9px;
+    margin-top: 8px;
+}
+
+.memory-secondary-button,
+.memory-primary-button {
+    min-height: 40px;
+    padding: 0 15px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 9px;
+    letter-spacing: 1.2px;
+    cursor: pointer;
+    transition:
+        color 180ms ease,
+        border-color 180ms ease,
+        background-color 180ms ease;
+}
+
+.memory-secondary-button:hover {
+    border-color: rgba(255, 240, 230, 0.35);
+    color: var(--cream);
+}
+
+.memory-primary-button {
+    border-color: rgba(255, 135, 95, 0.48);
+    color: var(--orange-light);
+}
+
+.memory-primary-button:hover:not(:disabled) {
+    border-color: var(--orange);
+    background: rgba(255, 135, 95, 0.08);
+}
+
+.memory-primary-button:disabled,
+.memory-secondary-button:disabled,
+.memory-action-close:disabled {
+    opacity: 0.56;
+    cursor: wait;
+}
+
+.delete-heading {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+}
+
+.delete-heading .eyebrow {
+    color: #bd8588;
+}
+
+.delete-heading h2 {
+    margin-bottom: 0;
+    font-size: 24px;
+}
+
+.delete-warning-icon {
+    display: grid;
+    flex: 0 0 34px;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(191, 103, 112, 0.3);
+    border-radius: 50%;
+    color: #bd8588;
+}
+
+.delete-warning-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.delete-description {
+    margin: 17px 0 20px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.delete-memory-preview {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.delete-preview-media {
+    flex: 0 0 58px;
+    width: 58px;
+    height: 62px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--film);
+}
+
+.delete-preview-media img,
+.delete-preview-media video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.delete-preview-copy {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+}
+
+.delete-preview-copy strong {
+    overflow: hidden;
+    color: var(--cream);
+    font-size: 12px;
+    font-weight: 400;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.delete-preview-copy span {
+    color: var(--muted);
+    font-size: 9px;
+    letter-spacing: 1px;
+}
+
+.delete-confirm-button {
+    border-color: rgba(191, 103, 112, 0.42);
+    color: #c78286;
+}
+
+.delete-confirm-button:hover:not(:disabled) {
+    border-color: #c78286;
+    background: rgba(191, 103, 112, 0.08);
+}
+
+
+@media (max-width: 700px) {
+    .viewer-information {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .viewer-actions {
+        justify-content: flex-start;
+        width: 100%;
+    }
+
+    .viewer-action-button,
+    .viewer-actions .favorite-large {
+        min-height: 32px;
+        padding: 0 9px;
+    }
+
+    .modal.memory-action-modal {
+        padding: 14px;
+    }
+
+    .memory-action-dialog {
+        padding: 29px 21px 21px;
+    }
+
+    .memory-action-dialog h2 {
+        font-size: 24px;
+    }
+
+    .memory-action-buttons {
+        gap: 7px;
+    }
+
+    .memory-secondary-button,
+    .memory-primary-button {
+        flex: 1;
+        min-width: 0;
+        padding: 0 8px;
+        font-size: 8px;
+        letter-spacing: 0.8px;
+    }
+}

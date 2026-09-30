@@ -348,7 +348,7 @@
 
                 <div class="viewer-information">
 
-                    <div>
+                    <div class="viewer-memory-details">
 
                         <p
                             class="viewer-caption"
@@ -367,12 +367,34 @@
                     </div>
 
 
-                    <button
-                        class="favorite-large"
-                        id="viewerFavoriteButton"
-                    >
-                        ♡
-                    </button>
+                    <div class="viewer-actions">
+
+                        <button
+                            type="button"
+                            class="viewer-action-button"
+                            id="editMemoryButton"
+                        >
+                            EDIT
+                        </button>
+
+                        <button
+                            type="button"
+                            class="viewer-action-button delete"
+                            id="deleteMemoryButton"
+                        >
+                            DELETE
+                        </button>
+
+                        <button
+                            type="button"
+                            class="favorite-large"
+                            id="viewerFavoriteButton"
+                            aria-label="Add to favorites"
+                        >
+                            ♡
+                        </button>
+
+                    </div>
 
                 </div>
 
@@ -387,6 +409,210 @@
             </button>
 
         </div>
+
+    </div>
+
+
+    <!-- EDIT MEMORY -->
+
+    <div
+        class="modal memory-action-modal"
+        id="editMemoryModal"
+        aria-hidden="true"
+    >
+
+        <div
+            class="modal-backdrop"
+            data-close-edit
+        ></div>
+
+
+        <section
+            class="memory-action-dialog edit-memory-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="editMemoryTitle"
+        >
+
+            <button
+                type="button"
+                class="modal-close memory-action-close"
+                id="closeEditMemoryButton"
+                aria-label="Close edit memory"
+            >
+                ×
+            </button>
+
+
+            <p class="eyebrow">EDIT MEMORY</p>
+
+            <h2 id="editMemoryTitle">Update this memory.</h2>
+
+
+            <form id="editMemoryForm" class="memory-action-form">
+
+                <label class="memory-action-field">
+                    <span>Date</span>
+
+                    <span class="edit-date-control">
+                        <input
+                            type="date"
+                            id="editMemoryDate"
+                            required
+                        >
+
+                        <button
+                            type="button"
+                            class="calendar-button"
+                            id="editCalendarButton"
+                            aria-label="Open calendar"
+                            title="Choose date"
+                        >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path
+                                    d="M7 2v3M17 2v3M3.5 9h17M5 4.5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2Z"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.7"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                />
+                            </svg>
+                        </button>
+                    </span>
+                </label>
+
+
+                <label class="memory-action-field">
+                    <span>Caption</span>
+                    <input
+                        type="text"
+                        id="editMemoryCaption"
+                        maxlength="100"
+                    >
+                </label>
+
+
+                <div class="memory-action-buttons">
+                    <button
+                        type="button"
+                        class="memory-secondary-button"
+                        id="cancelEditMemoryButton"
+                    >
+                        CANCEL
+                    </button>
+
+                    <button
+                        type="submit"
+                        class="memory-primary-button"
+                        id="saveMemoryChangesButton"
+                    >
+                        SAVE CHANGES
+                    </button>
+                </div>
+
+            </form>
+
+        </section>
+
+    </div>
+
+
+    <!-- DELETE MEMORY -->
+
+    <div
+        class="modal memory-action-modal"
+        id="deleteMemoryModal"
+        aria-hidden="true"
+    >
+
+        <div
+            class="modal-backdrop"
+            data-close-delete
+        ></div>
+
+
+        <section
+            class="memory-action-dialog delete-memory-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="deleteMemoryTitle"
+        >
+
+            <button
+                type="button"
+                class="modal-close memory-action-close"
+                id="closeDeleteMemoryButton"
+                aria-label="Close delete confirmation"
+            >
+                ×
+            </button>
+
+
+            <div class="delete-heading">
+                <span class="delete-warning-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                        <path
+                            d="M12 3.5 21 20H3L12 3.5Z"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.5"
+                            stroke-linejoin="round"
+                        />
+                        <path
+                            d="M12 9v5m0 2.5v.01"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.7"
+                            stroke-linecap="round"
+                        />
+                    </svg>
+                </span>
+
+                <div>
+                    <p class="eyebrow">DELETE MEMORY</p>
+                    <h2 id="deleteMemoryTitle">Remove this memory?</h2>
+                </div>
+            </div>
+
+
+            <p class="delete-description">
+                This will permanently remove this memory from the gallery.
+            </p>
+
+
+            <div class="delete-memory-preview">
+                <div
+                    class="delete-preview-media"
+                    id="deleteMemoryPreview"
+                ></div>
+
+                <div class="delete-preview-copy">
+                    <strong id="deleteMemoryCaption"></strong>
+                    <span id="deleteMemoryDate"></span>
+                </div>
+            </div>
+
+
+            <div class="memory-action-buttons">
+                <button
+                    type="button"
+                    class="memory-secondary-button"
+                    id="cancelDeleteMemoryButton"
+                >
+                    CANCEL
+                </button>
+
+                <button
+                    type="button"
+                    class="memory-primary-button delete-confirm-button"
+                    id="confirmDeleteMemoryButton"
+                >
+                    DELETE MEMORY
+                </button>
+            </div>
+
+        </section>
 
     </div>
 
