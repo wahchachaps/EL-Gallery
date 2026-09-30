@@ -1133,6 +1133,130 @@ button,
     font-size: 8px;
 }
 
+.memory-set-cover {
+    appearance: none;
+    padding: 0;
+    color: inherit;
+    text-align: left;
+}
+
+.memory-set-cover::after {
+    content: "";
+    position: absolute;
+    inset: 7px -7px -7px 7px;
+    z-index: -1;
+    border: 1px solid rgba(255, 190, 187, 0.2);
+    background: #120c0b;
+    pointer-events: none;
+}
+
+.memory-set-cover .memory-overlay {
+    opacity: 1;
+    background:
+        linear-gradient(
+            180deg,
+            rgba(8, 4, 4, 0.08),
+            transparent 38%,
+            rgba(18, 5, 8, 0.88)
+        );
+}
+
+.memory-set-count-badge {
+    position: absolute;
+    right: 11px;
+    bottom: 11px;
+    z-index: 4;
+    min-width: 34px;
+    padding: 7px 9px;
+    border: 1px solid rgba(255, 190, 187, 0.38);
+    border-radius: 999px;
+    background: rgba(12, 6, 7, 0.88);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.24);
+    color: var(--pink-light);
+    font-family: monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    line-height: 1;
+    text-align: center;
+}
+
+.memory-set-cover .memory-overlay-bottom {
+    padding-right: 50px;
+}
+
+.memory-set-member {
+    border-color: rgba(255, 135, 95, 0.26);
+    animation: memory-set-reveal 280ms ease both;
+}
+
+.memory-set-sequence-caption {
+    color: var(--orange-light);
+    font-family: monospace;
+    font-size: 8px;
+    font-style: normal;
+    letter-spacing: 0.9px;
+}
+
+.memory-set-collapse {
+    width: 112px;
+    height: 285px;
+    flex: 0 0 112px;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 10px;
+    padding: 18px 12px;
+    border: 1px dashed rgba(255, 190, 187, 0.28);
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.018);
+    color: var(--muted);
+    cursor: pointer;
+    animation: memory-set-reveal 280ms ease both;
+    transition:
+        border-color 180ms ease,
+        background-color 180ms ease,
+        color 180ms ease;
+}
+
+.memory-set-collapse > span {
+    color: var(--pink-light);
+    font-size: 21px;
+}
+
+.memory-set-collapse strong,
+.memory-set-collapse small {
+    font-family: monospace;
+    font-size: 8px;
+    letter-spacing: 1px;
+    text-align: center;
+}
+
+.memory-set-collapse small {
+    color: var(--faint);
+    font-size: 7px;
+}
+
+.memory-set-collapse:hover,
+.memory-set-collapse:focus-visible {
+    border-color: rgba(255, 117, 159, 0.62);
+    background: rgba(255, 117, 159, 0.055);
+    color: var(--cream);
+    outline: none;
+}
+
+@keyframes memory-set-reveal {
+    from {
+        opacity: 0;
+        transform: translateX(-8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
 .frame-favorite {
     width: 34px;
     height: 34px;
@@ -2287,12 +2411,16 @@ button,
 
 /* Hide the browser's default tiny calendar icon */
 
-.date-picker-field
-input[type="date"]
-::-webkit-calendar-picker-indicator {
-    opacity: 0;
+.date-picker-field input[type="date"],
+.edit-date-control input[type="date"] {
+    appearance: none;
+    -webkit-appearance: none;
+}
 
-    pointer-events: none;
+.date-picker-field input[type="date"]::-webkit-calendar-picker-indicator,
+.edit-date-control input[type="date"]::-webkit-calendar-picker-indicator {
+    display: none;
+    -webkit-appearance: none;
 }
 
 
@@ -2351,6 +2479,11 @@ input[type="date"]
     transform:
         translateY(-50%)
         scale(1.05);
+}
+
+.calendar-button:focus-visible {
+    outline: 1px solid var(--pink-light);
+    outline-offset: 2px;
 }
 
 
@@ -2472,10 +2605,19 @@ input[type="date"]
 }
 
 .search-result-preview {
+    position: relative;
     width: 65px;
     height: 55px;
 
     overflow: hidden;
+}
+
+.search-result-preview .memory-set-count-badge {
+    right: 4px;
+    bottom: 4px;
+    min-width: 24px;
+    padding: 4px 6px;
+    font-size: 8px;
 }
 
 .search-result-preview img,
@@ -2670,6 +2812,12 @@ input[type="date"]
         width: 185px;
     }
 
+    .memory-set-collapse {
+        width: 102px;
+        height: 245px;
+        flex-basis: 102px;
+    }
+
     .favorites-grid {
         grid-template-columns:
             repeat(2,1fr);
@@ -2744,6 +2892,20 @@ input[type="date"]
         width: 170px;
     }
 
+    .memory-set-collapse {
+        width: 92px;
+        height: 225px;
+        flex-basis: 92px;
+        padding-inline: 9px;
+    }
+
+    .memory-set-count-badge {
+        right: 9px;
+        bottom: 9px;
+        min-width: 32px;
+        padding: 7px 8px;
+    }
+
     .timeline-year,
     .progress-number {
         display: none;
@@ -2787,6 +2949,11 @@ input[type="date"]
     }
 
     .viewer-note-panel {
+        animation: none;
+    }
+
+    .memory-set-member,
+    .memory-set-collapse {
         animation: none;
     }
 }
@@ -3014,30 +3181,17 @@ input[type="date"]
 }
 
 .edit-date-control {
+    position: relative;
+    width: 100%;
     display: flex;
-    align-items: stretch;
+    align-items: center;
 }
 
 .edit-date-control input {
+    width: 100%;
     flex: 1;
-    border-radius: 3px 0 0 3px;
-}
-
-.edit-date-control .calendar-button {
-    display: grid;
-    place-items: center;
-    width: 44px;
-    border: 1px solid var(--border);
-    border-left: 0;
-    border-radius: 0 3px 3px 0;
-    background: rgba(255, 255, 255, 0.025);
-    color: var(--orange-light);
-    cursor: pointer;
-}
-
-.edit-date-control .calendar-button svg {
-    width: 17px;
-    height: 17px;
+    padding-right: 56px;
+    border-radius: 3px;
 }
 
 .memory-action-buttons {

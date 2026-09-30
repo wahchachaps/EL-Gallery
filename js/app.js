@@ -135,6 +135,8 @@ let uploadSharedPrivateNote = null;
 
 let viewerNoteExpanded = false;
 
+const expandedMemorySets = new Set();
+
 let isUploadingMemories = false;
 
 let draggedUploadItemId = null;
@@ -581,6 +583,106 @@ function getMemorySetInfo(memory) {
     return index === -1
         ? null
         : { position: index + 1, total: members.length };
+}
+
+
+function getOrderedSetMembers(groupId, source = sortedMemories()) {
+
+    if (!groupId) {
+        return [];
+    }
+
+
+    const sourcePositions = new Map(
+        source.map((memory, index) => [memory.id, index])
+    );
+
+
+    return source
+        .filter(memory => memory.groupId === groupId)
+        .slice()
+        .sort((a, b) => {
+            const aOrder = Number.isInteger(a.groupOrder)
+                ? a.groupOrder
+                : Number.MAX_SAFE_INTEGER;
+
+            const bOrder = Number.isInteger(b.groupOrder)
+                ? b.groupOrder
+                : Number.MAX_SAFE_INTEGER;
+
+
+            return aOrder - bOrder ||
+                (sourcePositions.get(a.id) ?? 0) -
+                (sourcePositions.get(b.id) ?? 0);
+        });
+}
+
+
+function getGalleryDisplayItems(monthMemories) {
+
+    const items = [];
+    const handledGroups = new Set();
+
+
+    monthMemories.forEach(memory => {
+        if (!memory.groupId) {
+            items.push({ kind: "memory", memory });
+            return;
+        }
+
+
+        if (handledGroups.has(memory.groupId)) {
+            return;
+        }
+
+
+        handledGroups.add(memory.groupId);
+
+        const members = getOrderedSetMembers(
+            memory.groupId,
+            monthMemories
+        );
+
+
+        if (members.length <= 1) {
+            items.push({ kind: "memory", memory: members[0] || memory });
+            return;
+        }
+
+
+        if (!expandedMemorySets.has(memory.groupId)) {
+            items.push({
+                kind: "set-cover",
+                groupId: memory.groupId,
+                memory: members[0],
+                members
+            });
+            return;
+        }
+
+
+        members.forEach((member, index) => {
+            items.push({
+                kind: "memory",
+                memory: member,
+                setInfo: {
+                    groupId: memory.groupId,
+                    position: index + 1,
+                    total: members.length
+                }
+            });
+        });
+
+        items.push({
+            kind: "set-collapse",
+            groupId: memory.groupId,
+            coverId: members[0].id,
+            total: members.length
+        });
+    });
+
+
+    return items;
 }
 
 
@@ -1051,116 +1153,118 @@ function createMonthFrames(
     }
 
 
-    return monthMemories
-        .map(
-            (memory, index) => {
-
-                const setInfo =
-                    getMemorySetInfo(memory);
-
-                const frame =
-                    String(
-                        index + 1
-                    ).padStart(
-                        2,
-                        "0"
-                    );
+    let visibleFrameIndex = 0;
 
 
+    return getGalleryDisplayItems(monthMemories)
+        .map(item => {
+            if (item.kind === "set-collapse") {
                 return `
-
-                    <article
-                        class="
-                            memory-frame
-                            ${getFrameLayout(index)}
-                        "
-
-                        data-memory-id="${memory.id}"
+                    <button
+                        type="button"
+                        class="memory-set-collapse"
+                        data-collapse-group="${escapeHTML(item.groupId)}"
+                        data-cover-id="${escapeHTML(item.coverId)}"
+                        aria-label="Collapse memory set with ${item.total} memories"
+                        title="Collapse memory set"
                     >
-
-                        ${createMemoryMedia(memory)}
-
-
-                        ${
-                            memory.type === "video"
-
-                            ? `
-                                <div class="video-indicator">
-                                    ● LIVE
-                                </div>
-                            `
-
-                            : ""
-                        }
-
-
-                        <div class="memory-overlay">
-
-                            <span class="memory-frame-number">
-                                ${frame}
-                            </span>
-
-                            ${
-                                setInfo && setInfo.total > 1
-                                    ? `<span class="memory-set-position">SET ${setInfo.position} / ${setInfo.total}</span>`
-                                    : ""
-                            }
-
-
-                            <div class="memory-overlay-bottom">
-
-                                <div>
-
-                                    <p class="memory-caption">
-                                        ${escapeHTML(
-                                            memory.caption ||
-                                            "Untitled memory"
-                                        )}
-                                    </p>
-
-                                    <p class="memory-date">
-                                        ${formatDate(
-                                            memory.date
-                                        )}
-                                    </p>
-
-                                </div>
-
-
-                                <button
-                                    class="
-                                        frame-favorite
-                                        ${
-                                            isFavorite(
-                                                memory.id
-                                            )
-                                            ? "favorite"
-                                            : ""
-                                        }
-                                    "
-
-                                    data-favorite-id="${memory.id}"
-                                >
-
-                                    ${
-                                        isFavorite(
-                                            memory.id
-                                        )
-                                        ? "♥"
-                                        : "♡"
-                                    }
-
-                                </button>
-
-                            </div>
-
-                        </div>
-
-                    </article>
-
+                        <span aria-hidden="true">&larr;</span>
+                        <strong>COLLAPSE SET</strong>
+                        <small>${item.total} MEMORIES</small>
+                    </button>
                 `;
             }
-        )
+
+
+            const memory = item.memory;
+            const layout = getFrameLayout(visibleFrameIndex);
+            const frame = String(visibleFrameIndex + 1).padStart(2, "0");
+
+            visibleFrameIndex += 1;
+
+
+            if (item.kind === "set-cover") {
+                return `
+                    <button
+                        type="button"
+                        class="memory-frame memory-set-cover ${layout}"
+                        data-expand-group="${escapeHTML(item.groupId)}"
+                        aria-label="Open memory set with ${item.members.length} memories"
+                        aria-expanded="false"
+                    >
+                        ${createMemoryMedia(memory)}
+
+                        ${memory.type === "video"
+                            ? `<div class="video-indicator">● LIVE</div>`
+                            : ""}
+
+                        <span class="memory-set-count-badge">
+                            +${item.members.length - 1}
+                        </span>
+
+                        <div class="memory-overlay">
+                            <span class="memory-frame-number">${frame}</span>
+
+                            <div class="memory-overlay-bottom">
+                                <div>
+                                    <p class="memory-caption">
+                                        ${escapeHTML(memory.caption || "Untitled memory")}
+                                    </p>
+                                    <p class="memory-date">${formatDate(memory.date)}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </button>
+                `;
+            }
+
+
+            const setInfo = item.setInfo || null;
+            const caption = setInfo && setInfo.position > 1
+                ? `MEMORY SET · ${setInfo.position} / ${setInfo.total}`
+                : escapeHTML(memory.caption || "Untitled memory");
+
+
+            return `
+                <article
+                    class="memory-frame ${layout} ${setInfo ? "memory-set-member" : ""}"
+                    data-memory-id="${escapeHTML(memory.id)}"
+                    ${setInfo ? `data-memory-set="${escapeHTML(setInfo.groupId)}"` : ""}
+                >
+                    ${createMemoryMedia(memory)}
+
+                    ${memory.type === "video"
+                        ? `<div class="video-indicator">● LIVE</div>`
+                        : ""}
+
+                    <div class="memory-overlay">
+                        <span class="memory-frame-number">${frame}</span>
+
+                        ${setInfo
+                            ? `<span class="memory-set-position">SET ${setInfo.position} / ${setInfo.total}</span>`
+                            : ""}
+
+                        <div class="memory-overlay-bottom">
+                            <div>
+                                <p class="memory-caption ${setInfo && setInfo.position > 1 ? "memory-set-sequence-caption" : ""}">
+                                    ${caption}
+                                </p>
+                                <p class="memory-date">${formatDate(memory.date)}</p>
+                            </div>
+
+                            <button
+                                type="button"
+                                class="frame-favorite ${isFavorite(memory.id) ? "favorite" : ""}"
+                                data-favorite-id="${escapeHTML(memory.id)}"
+                                aria-label="${isFavorite(memory.id) ? "Remove from" : "Add to"} favorites"
+                            >
+                                ${isFavorite(memory.id) ? "♥" : "♡"}
+                            </button>
+                        </div>
+                    </div>
+                </article>
+            `;
+        })
         .join("");
 }
 
@@ -1241,6 +1345,23 @@ function buildGallery() {
 
     const ordered =
         sortedMemories();
+
+    const activeSetSizes = new Map();
+
+    ordered.forEach(memory => {
+        if (memory.groupId) {
+            activeSetSizes.set(
+                memory.groupId,
+                (activeSetSizes.get(memory.groupId) || 0) + 1
+            );
+        }
+    });
+
+    expandedMemorySets.forEach(groupId => {
+        if ((activeSetSizes.get(groupId) || 0) < 2) {
+            expandedMemorySets.delete(groupId);
+        }
+    });
 
 
     introMemoryCount.textContent =
@@ -1414,7 +1535,7 @@ function attachFrameEvents() {
 
     document
         .querySelectorAll(
-            ".memory-frame"
+            ".memory-frame[data-memory-id]"
         )
         .forEach(frame => {
 
@@ -1438,6 +1559,32 @@ function attachFrameEvents() {
                 }
             );
 
+        });
+
+
+    document
+        .querySelectorAll("[data-expand-group]")
+        .forEach(button => {
+            button.addEventListener("click", () => {
+                toggleGalleryMemorySet(
+                    button.dataset.expandGroup,
+                    true,
+                    button
+                );
+            });
+        });
+
+
+    document
+        .querySelectorAll("[data-collapse-group]")
+        .forEach(button => {
+            button.addEventListener("click", () => {
+                toggleGalleryMemorySet(
+                    button.dataset.collapseGroup,
+                    false,
+                    button
+                );
+            });
         });
 
 
@@ -1486,6 +1633,48 @@ function attachFrameEvents() {
             );
 
         });
+}
+
+
+function toggleGalleryMemorySet(groupId, shouldExpand, trigger) {
+
+    const triggerRect = trigger.getBoundingClientRect();
+    const desiredLeft = shouldExpand
+        ? Math.max(
+            18,
+            Math.min(triggerRect.left, window.innerWidth - 240)
+        )
+        : 32;
+
+
+    if (shouldExpand) {
+        expandedMemorySets.add(groupId);
+    } else {
+        expandedMemorySets.delete(groupId);
+    }
+
+
+    buildGallery();
+
+
+    const target = shouldExpand
+        ? Array.from(document.querySelectorAll("[data-memory-set]"))
+            .find(frame => frame.dataset.memorySet === groupId)
+        : Array.from(document.querySelectorAll("[data-expand-group]"))
+            .find(frame => frame.dataset.expandGroup === groupId);
+
+
+    if (target) {
+        const targetRect = target.getBoundingClientRect();
+        const previousScrollBehavior = galleryTrack.style.scrollBehavior;
+
+        galleryTrack.style.scrollBehavior = "auto";
+        galleryTrack.scrollLeft += targetRect.left - desiredLeft;
+        galleryTrack.style.scrollBehavior = previousScrollBehavior;
+    }
+
+
+    requestAnimationFrame(updateTimeline);
 }
 
 
@@ -3970,7 +4159,35 @@ function openSearchModal() {
 
 function renderSearchResults(items) {
 
-    if (!items.length) {
+    const results = [];
+    const handledGroups = new Set();
+    const allMemories = sortedMemories();
+
+
+    items.forEach(memory => {
+        if (!memory.groupId) {
+            results.push({ memory, setSize: 1 });
+            return;
+        }
+
+
+        if (handledGroups.has(memory.groupId)) {
+            return;
+        }
+
+
+        handledGroups.add(memory.groupId);
+
+        const members = getOrderedSetMembers(memory.groupId, allMemories);
+
+        results.push({
+            memory: members[0] || memory,
+            setSize: members.length
+        });
+    });
+
+
+    if (!results.length) {
 
         searchResults.innerHTML = `
 
@@ -3985,9 +4202,9 @@ function renderSearchResults(items) {
 
 
     searchResults.innerHTML =
-        items
+        results
             .slice(0,20)
-            .map(memory => `
+            .map(({ memory, setSize }) => `
 
                 <button
                     class="search-result"
@@ -4000,6 +4217,10 @@ function renderSearchResults(items) {
                         ${createSmallPreview(
                             memory
                         )}
+
+                        ${setSize > 1
+                            ? `<span class="memory-set-count-badge">+${setSize - 1}</span>`
+                            : ""}
 
                     </div>
 
