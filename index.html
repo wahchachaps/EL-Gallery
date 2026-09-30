@@ -617,6 +617,129 @@
     </div>
 
 
+    <!-- OUR FILMS SLIDESHOW -->
+
+    <div
+        class="modal our-films-modal"
+        id="ourFilmsModal"
+        aria-hidden="true"
+    >
+
+        <div
+            class="modal-backdrop"
+            data-close-our-films
+        ></div>
+
+
+        <section
+            class="our-films-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ourFilmsTitle"
+        >
+
+            <header class="our-films-header">
+                <p class="eyebrow">OUR FILMS</p>
+
+                <button
+                    type="button"
+                    class="modal-close our-films-close"
+                    id="ourFilmsCloseButton"
+                    aria-label="Close Our Films"
+                >
+                    ×
+                </button>
+            </header>
+
+
+            <div class="our-films-heading">
+                <div>
+                    <h2 id="ourFilmsTitle">JULY 2026</h2>
+                    <p id="ourFilmsNote"></p>
+                </div>
+
+                <span
+                    class="our-films-counter"
+                    id="ourFilmsCounter"
+                    aria-live="polite"
+                ></span>
+            </div>
+
+
+            <div class="our-films-navigation">
+                <button
+                    type="button"
+                    class="our-films-arrow"
+                    id="ourFilmsPrevious"
+                    aria-label="Previous memory"
+                >
+                    ←
+                </button>
+
+                <div class="our-films-stage" id="ourFilmsStage">
+                    <div
+                        class="our-films-media"
+                        id="ourFilmsMedia"
+                    ></div>
+
+                    <div
+                        class="our-films-empty"
+                        id="ourFilmsEmpty"
+                        hidden
+                    >
+                        <strong>NO EXPOSURES YET</strong>
+                        <span>Nothing developed for this month.</span>
+                        <button
+                            type="button"
+                            class="our-films-add-memory"
+                            id="ourFilmsAddMemoryButton"
+                        >
+                            + ADD MEMORY
+                        </button>
+                    </div>
+                </div>
+
+                <button
+                    type="button"
+                    class="our-films-arrow"
+                    id="ourFilmsNext"
+                    aria-label="Next memory"
+                >
+                    →
+                </button>
+            </div>
+
+
+            <div class="our-films-caption-row">
+                <p id="ourFilmsCaption"></p>
+                <time id="ourFilmsDate"></time>
+            </div>
+
+
+            <div class="our-films-playback">
+                <button
+                    type="button"
+                    class="our-films-play-button"
+                    id="ourFilmsPlayButton"
+                    aria-pressed="false"
+                >
+                    <span aria-hidden="true">▶</span>
+                    <span>PLAY</span>
+                </button>
+            </div>
+
+
+            <nav
+                class="our-films-months"
+                id="ourFilmsMonths"
+                aria-label="Choose a film month"
+            ></nav>
+
+        </section>
+
+    </div>
+
+
     <!-- ADD MEMORY -->
 
     <div

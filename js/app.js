@@ -93,6 +93,24 @@ let memories = [];
 
 let currentViewerIndex = 0;
 
+let ourFilmsMonth = START_MONTH;
+
+let ourFilmsSlideIndex = 0;
+
+let ourFilmsPlaying = false;
+
+let ourFilmsTimer = null;
+
+let ourFilmsRenderToken = 0;
+
+let ourFilmsActiveVideo = null;
+
+let ourFilmsVideoEndedHandler = null;
+
+let ourFilmsVideoVolumeHandler = null;
+
+let ourFilmsVideoVolume = 1;
+
 let editingMemoryId = null;
 
 let pendingDeleteMemoryId = null;
@@ -256,6 +274,54 @@ const cancelDeleteMemoryButton =
 
 const confirmDeleteMemoryButton =
     document.getElementById("confirmDeleteMemoryButton");
+
+
+/* OUR FILMS */
+
+const ourFilmsModal =
+    document.getElementById("ourFilmsModal");
+
+const ourFilmsCloseButton =
+    document.getElementById("ourFilmsCloseButton");
+
+const ourFilmsTitle =
+    document.getElementById("ourFilmsTitle");
+
+const ourFilmsNote =
+    document.getElementById("ourFilmsNote");
+
+const ourFilmsCounter =
+    document.getElementById("ourFilmsCounter");
+
+const ourFilmsStage =
+    document.getElementById("ourFilmsStage");
+
+const ourFilmsMedia =
+    document.getElementById("ourFilmsMedia");
+
+const ourFilmsEmpty =
+    document.getElementById("ourFilmsEmpty");
+
+const ourFilmsAddMemoryButton =
+    document.getElementById("ourFilmsAddMemoryButton");
+
+const ourFilmsCaption =
+    document.getElementById("ourFilmsCaption");
+
+const ourFilmsDate =
+    document.getElementById("ourFilmsDate");
+
+const ourFilmsPrevious =
+    document.getElementById("ourFilmsPrevious");
+
+const ourFilmsNext =
+    document.getElementById("ourFilmsNext");
+
+const ourFilmsPlayButton =
+    document.getElementById("ourFilmsPlayButton");
+
+const ourFilmsMonths =
+    document.getElementById("ourFilmsMonths");
 
 
 /* UPLOAD */
@@ -1590,21 +1656,71 @@ function updateTimeline() {
         });
 
 
+    let activeTimelineButton = null;
+
+
     document
         .querySelectorAll(
             ".timeline-month"
         )
         .forEach(button => {
 
+            const isActive =
+                Number(button.dataset.month) === activeMonth;
+
+            const wasActive =
+                button.classList.contains("active");
+
+
             button.classList.toggle(
                 "active",
-
-                Number(
-                    button.dataset.month
-                ) === activeMonth
+                isActive
             );
 
+
+            if (isActive && !wasActive) {
+                activeTimelineButton = button;
+            }
+
         });
+
+
+    if (activeTimelineButton) {
+
+        const navBounds =
+            monthsTimeline.getBoundingClientRect();
+
+        const buttonBounds =
+            activeTimelineButton.getBoundingClientRect();
+
+
+        if (
+            buttonBounds.left < navBounds.left ||
+            buttonBounds.right > navBounds.right
+        ) {
+
+            const nextScrollLeft =
+                monthsTimeline.scrollLeft +
+                buttonBounds.left -
+                navBounds.left -
+                (monthsTimeline.clientWidth - buttonBounds.width) / 2;
+
+
+            monthsTimeline.scrollTo({
+                left: Math.max(
+                    0,
+                    Math.min(
+                        monthsTimeline.scrollWidth -
+                            monthsTimeline.clientWidth,
+                        nextScrollLeft
+                    )
+                ),
+                behavior: "smooth"
+            });
+
+        }
+
+    }
 
 
     homeButton.classList.toggle(
@@ -1638,7 +1754,7 @@ galleryTrack.addEventListener(
 
 startRollButton.addEventListener(
     "click",
-    () => scrollToMonth(0)
+    () => scrollToMonth(START_MONTH)
 );
 
 
@@ -1656,7 +1772,7 @@ homeButton.addEventListener(
 
 filmsButton.addEventListener(
     "click",
-    () => scrollToMonth(0)
+    openOurFilms
 );
 
 
@@ -1947,6 +2063,663 @@ closeViewerButton.addEventListener(
         closeModal(
             viewerModal
         )
+);
+
+
+/* =========================================================
+   OUR FILMS SLIDESHOW
+   ========================================================= */
+
+function getOurFilmsMemories() {
+
+    return sortedMemories()
+        .filter(
+            memory =>
+                getMonthIndex(memory.date) === ourFilmsMonth &&
+                getYear(memory.date) === CURRENT_YEAR
+        );
+}
+
+
+function buildOurFilmsMonthNav() {
+
+    ourFilmsMonths.innerHTML = "";
+
+
+    VISIBLE_MONTHS.forEach(
+        ({ name, index }) => {
+
+            const button =
+                document.createElement("button");
+
+
+            button.type = "button";
+
+            button.className = "our-films-month";
+
+            button.dataset.month = index;
+
+            button.textContent =
+                name.substring(0, 3).toUpperCase();
+
+            button.setAttribute("aria-pressed", "false");
+
+            ourFilmsMonths.appendChild(button);
+
+        }
+    );
+
+
+    updateOurFilmsMonthNav();
+}
+
+
+function updateOurFilmsMonthNav(keepActiveVisible = false) {
+
+    let activeButton = null;
+
+
+    ourFilmsMonths
+        .querySelectorAll(".our-films-month")
+        .forEach(button => {
+
+            const active =
+                Number(button.dataset.month) === ourFilmsMonth;
+
+
+            button.classList.toggle("active", active);
+
+            button.setAttribute("aria-pressed", String(active));
+
+
+            if (active) {
+                activeButton = button;
+            }
+
+        });
+
+
+    if (keepActiveVisible && activeButton) {
+        activeButton.scrollIntoView({
+            block: "nearest",
+            inline: "center",
+            behavior: "smooth"
+        });
+    }
+}
+
+
+function pauseGalleryVideoPreviews() {
+
+    if (videoObserver) {
+        videoObserver.disconnect();
+    }
+
+
+    document
+        .querySelectorAll(".preview-video")
+        .forEach(pausePreviewVideo);
+}
+
+
+function resumeGalleryVideoPreviews() {
+
+    if (!document.querySelector(".modal.open")) {
+        setupVideoAutoplay();
+    }
+}
+
+
+function clearOurFilmsTimer() {
+
+    clearTimeout(ourFilmsTimer);
+
+    ourFilmsTimer = null;
+}
+
+
+function updateOurFilmsPlayButton() {
+
+    ourFilmsPlayButton.textContent =
+        ourFilmsPlaying
+            ? "Ⅱ PAUSE"
+            : "▶ PLAY";
+
+    ourFilmsPlayButton.setAttribute(
+        "aria-pressed",
+        String(ourFilmsPlaying)
+    );
+}
+
+
+function createOurFilmsMedia(memory) {
+
+    if (
+        memory.type === "image" ||
+        memory.type === "gif"
+    ) {
+
+        return `
+
+            <img
+                src="${escapeHTML(memory.src)}"
+                alt="${escapeHTML(memory.caption || "Memory")}"
+                draggable="false"
+            >
+
+        `;
+    }
+
+
+    if (memory.type === "video") {
+
+        return `
+
+            <video
+                src="${escapeHTML(memory.src)}"
+                controls
+                playsinline
+                preload="metadata"
+                aria-label="${escapeHTML(memory.caption || "Memory video")}"
+            ></video>
+
+        `;
+    }
+
+
+    return `
+
+        <div class="placeholder-frame">
+            <strong>${escapeHTML(memory.caption || "Memory")}</strong>
+            <span>${formatDate(memory.date)}</span>
+        </div>
+
+    `;
+}
+
+
+function renderOurFilms(animate = true) {
+
+    clearOurFilmsTimer();
+
+    ourFilmsRenderToken += 1;
+
+    pauseOurFilmsVideo();
+
+    const renderToken = ourFilmsRenderToken;
+
+    const monthMemories =
+        getOurFilmsMemories();
+
+
+    const hasMemories =
+        monthMemories.length > 0;
+
+
+    ourFilmsMedia.innerHTML = "";
+
+    ourFilmsTitle.textContent =
+        `${MONTHS[ourFilmsMonth].toUpperCase()} ${CURRENT_YEAR}`;
+
+    ourFilmsNote.textContent =
+        MONTH_NOTES[ourFilmsMonth] || "";
+
+    ourFilmsCounter.textContent = "";
+
+    ourFilmsCaption.textContent = "";
+
+    ourFilmsDate.textContent = "";
+
+    ourFilmsDate.removeAttribute("datetime");
+
+    ourFilmsEmpty.hidden = hasMemories;
+
+    ourFilmsPrevious.disabled = !hasMemories;
+
+    ourFilmsNext.disabled = !hasMemories;
+
+    ourFilmsPlayButton.disabled = !hasMemories;
+
+    ourFilmsStage.classList.remove("is-changing");
+
+
+    if (!hasMemories) {
+        updateOurFilmsMonthNav();
+        scheduleOurFilmsAdvance();
+        return;
+    }
+
+
+    ourFilmsSlideIndex =
+        ourFilmsSlideIndex % monthMemories.length;
+
+
+    const memory =
+        monthMemories[ourFilmsSlideIndex];
+
+
+    ourFilmsCounter.textContent =
+        `FRAME ${String(ourFilmsSlideIndex + 1).padStart(2, "0")} / ${String(monthMemories.length).padStart(2, "0")}`;
+
+    ourFilmsCaption.textContent =
+        memory.caption || "Untitled memory";
+
+    ourFilmsDate.textContent =
+        formatDate(memory.date).replace(", ", " '");
+
+    ourFilmsDate.dateTime = memory.date;
+
+    ourFilmsMedia.innerHTML =
+        createOurFilmsMedia(memory);
+
+
+    if (memory.type === "video") {
+
+        const video =
+            ourFilmsMedia.querySelector("video");
+
+
+        video.controls = true;
+        video.playsInline = true;
+        video.preload = "metadata";
+
+        ourFilmsActiveVideo = video;
+
+        ourFilmsVideoEndedHandler = () => {
+
+            if (
+                renderToken !== ourFilmsRenderToken ||
+                video !== ourFilmsActiveVideo ||
+                !ourFilmsPlaying ||
+                !ourFilmsModal.classList.contains("open")
+            ) {
+                return;
+            }
+
+
+            showNextOurFilmsMemory();
+        };
+
+        ourFilmsVideoVolumeHandler = () => {
+
+            if (
+                renderToken === ourFilmsRenderToken &&
+                video === ourFilmsActiveVideo
+            ) {
+                ourFilmsVideoVolume = video.volume;
+            }
+        };
+
+        video.addEventListener(
+            "ended",
+            ourFilmsVideoEndedHandler
+        );
+
+        video.addEventListener(
+            "volumechange",
+            ourFilmsVideoVolumeHandler
+        );
+
+    }
+
+
+    updateOurFilmsMonthNav();
+
+
+    if (animate) {
+        void ourFilmsStage.offsetWidth;
+        ourFilmsStage.classList.add("is-changing");
+    }
+
+
+    scheduleOurFilmsAdvance();
+}
+
+
+function scheduleOurFilmsAdvance() {
+
+    clearOurFilmsTimer();
+
+
+    if (
+        !ourFilmsPlaying ||
+        !ourFilmsModal.classList.contains("open") ||
+        !getOurFilmsMemories().length
+    ) {
+        return;
+    }
+
+
+    const monthMemories =
+        getOurFilmsMemories();
+
+    const memory =
+        monthMemories[ourFilmsSlideIndex];
+
+    if (!memory) {
+        return;
+    }
+
+
+    const renderToken = ourFilmsRenderToken;
+    const memoryId = memory.id;
+
+
+    if (memory.type === "video") {
+
+        const video = ourFilmsActiveVideo;
+
+
+        if (!video) {
+            return;
+        }
+
+
+        if (video.ended) {
+            video.currentTime = 0;
+        }
+
+
+        video.muted = false;
+
+        video.volume = ourFilmsVideoVolume;
+
+        video.playsInline = true;
+
+
+        try {
+
+            const playPromise = video.play();
+
+
+            if (playPromise) {
+                playPromise.catch(() => {});
+            }
+
+        }
+
+        catch {
+            // Keep the video visible and let native controls handle playback.
+        }
+
+
+        return;
+    }
+
+
+    ourFilmsTimer =
+        setTimeout(() => {
+
+            ourFilmsTimer = null;
+
+
+            if (
+                !ourFilmsPlaying ||
+                !ourFilmsModal.classList.contains("open") ||
+                renderToken !== ourFilmsRenderToken
+            ) {
+                return;
+            }
+
+
+            const currentMemory =
+                getOurFilmsMemories()[ourFilmsSlideIndex];
+
+
+            if (!currentMemory || currentMemory.id !== memoryId) {
+                return;
+            }
+
+
+            showNextOurFilmsMemory();
+
+        }, 5000);
+}
+
+
+function openOurFilms() {
+
+    stopOurFilmsPlayback();
+
+    pauseOurFilmsVideo();
+
+    pauseGalleryVideoPreviews();
+
+    ourFilmsMonth = START_MONTH;
+
+    ourFilmsSlideIndex = 0;
+
+    renderOurFilms(false);
+
+    openModal(ourFilmsModal);
+
+    filmsButton.classList.add("active");
+
+    homeButton.classList.remove("active");
+
+    updateOurFilmsMonthNav(true);
+}
+
+
+function closeOurFilms() {
+
+    stopOurFilmsPlayback();
+
+    pauseOurFilmsVideo();
+
+    ourFilmsMedia.innerHTML = "";
+
+    ourFilmsStage.classList.remove("is-changing");
+
+    closeModal(ourFilmsModal);
+
+    updateTimeline();
+
+    resumeGalleryVideoPreviews();
+}
+
+
+function pauseOurFilmsVideo() {
+
+    clearOurFilmsTimer();
+
+    const video =
+        ourFilmsActiveVideo ||
+        ourFilmsMedia.querySelector("video");
+
+
+    if (video) {
+
+        if (ourFilmsVideoEndedHandler) {
+            video.removeEventListener(
+                "ended",
+                ourFilmsVideoEndedHandler
+            );
+        }
+
+
+        if (ourFilmsVideoVolumeHandler) {
+            video.removeEventListener(
+                "volumechange",
+                ourFilmsVideoVolumeHandler
+            );
+        }
+
+
+        video.pause();
+    }
+
+
+    ourFilmsActiveVideo = null;
+
+    ourFilmsVideoEndedHandler = null;
+
+    ourFilmsVideoVolumeHandler = null;
+}
+
+
+function setOurFilmsMonth(monthIndex) {
+
+    const monthIsVisible =
+        VISIBLE_MONTHS.some(
+            month => month.index === monthIndex
+        );
+
+
+    if (!monthIsVisible) {
+        return;
+    }
+
+
+    ourFilmsMonth = monthIndex;
+
+    ourFilmsSlideIndex = 0;
+
+    renderOurFilms();
+
+    updateOurFilmsMonthNav(true);
+}
+
+
+function showNextOurFilmsMemory() {
+
+    const count =
+        getOurFilmsMemories().length;
+
+
+    if (!count) {
+        return;
+    }
+
+
+    ourFilmsSlideIndex =
+        (ourFilmsSlideIndex + 1) % count;
+
+    renderOurFilms();
+}
+
+
+function showPreviousOurFilmsMemory() {
+
+    const count =
+        getOurFilmsMemories().length;
+
+
+    if (!count) {
+        return;
+    }
+
+
+    ourFilmsSlideIndex =
+        (ourFilmsSlideIndex - 1 + count) % count;
+
+    renderOurFilms();
+}
+
+
+function startOurFilmsPlayback() {
+
+    if (
+        ourFilmsPlaying ||
+        !getOurFilmsMemories().length
+    ) {
+        return;
+    }
+
+
+    ourFilmsPlaying = true;
+
+    updateOurFilmsPlayButton();
+
+    scheduleOurFilmsAdvance();
+}
+
+
+function stopOurFilmsPlayback() {
+
+    clearOurFilmsTimer();
+
+    ourFilmsPlaying = false;
+
+    updateOurFilmsPlayButton();
+
+    if (ourFilmsActiveVideo) {
+        ourFilmsActiveVideo.pause();
+    }
+}
+
+
+function toggleOurFilmsPlayback() {
+
+    if (ourFilmsPlaying) {
+        stopOurFilmsPlayback();
+    } else {
+        startOurFilmsPlayback();
+    }
+}
+
+
+ourFilmsCloseButton.addEventListener(
+    "click",
+    closeOurFilms
+);
+
+
+document
+    .querySelector("[data-close-our-films]")
+    .addEventListener(
+        "click",
+        closeOurFilms
+    );
+
+
+ourFilmsPrevious.addEventListener(
+    "click",
+    showPreviousOurFilmsMemory
+);
+
+
+ourFilmsNext.addEventListener(
+    "click",
+    showNextOurFilmsMemory
+);
+
+
+ourFilmsPlayButton.addEventListener(
+    "click",
+    toggleOurFilmsPlayback
+);
+
+
+ourFilmsMonths.addEventListener(
+    "click",
+    event => {
+
+        const button =
+            event.target.closest(".our-films-month");
+
+
+        if (button) {
+            setOurFilmsMonth(
+                Number(button.dataset.month)
+            );
+        }
+
+    }
+);
+
+
+ourFilmsAddMemoryButton.addEventListener(
+    "click",
+    () => {
+
+        const month = ourFilmsMonth;
+
+        closeOurFilms();
+
+        openUploadModal(month);
+
+    }
 );
 
 
@@ -3238,6 +4011,43 @@ document.addEventListener(
     "keydown",
     event => {
 
+        const target = event.target;
+
+        const isEditingField =
+            target instanceof Element &&
+            (
+                target.isContentEditable ||
+                target.closest("input, textarea, select")
+            );
+
+
+        if (
+            ourFilmsModal.classList
+                .contains("open")
+        ) {
+
+            if (event.key === "Escape") {
+                closeOurFilms();
+                return;
+            }
+
+
+            if (!isEditingField && event.key === "ArrowRight") {
+                event.preventDefault();
+                showNextOurFilmsMemory();
+            }
+
+
+            if (!isEditingField && event.key === "ArrowLeft") {
+                event.preventDefault();
+                showPreviousOurFilmsMemory();
+            }
+
+
+            return;
+        }
+
+
         const modal =
             document.querySelector(
                 ".modal.open"
@@ -3274,7 +4084,8 @@ document.addEventListener(
 
             if (
                 viewerModal.classList
-                    .contains("open")
+                    .contains("open") &&
+                !isEditingField
             ) {
 
                 if (
@@ -3328,6 +4139,8 @@ document.addEventListener(
 async function initializeGallery() {
 
     buildTimeline();
+
+    buildOurFilmsMonthNav();
 
 
     memoryDate.value =
