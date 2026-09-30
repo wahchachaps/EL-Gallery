@@ -35,16 +35,16 @@ const VISIBLE_MONTHS =
         );
 
 const MONTH_NOTES = [
-    "where the year began ♡",
+    "where it all began ♡",
     "little moments",
     "keep this one",
     "days worth remembering",
     "somewhere between then & now",
     "halfway there",
-    "summer frames",
-    "another roll",
-    "our little archive",
-    "caught on film",
+    "where it all began",
+    "closer with every day",
+    "the month we became us",
+    "I love you supder duper much bebu",
     "almost another year",
     "end of this chapter"
 ];
@@ -218,6 +218,33 @@ const dropZone =
 
 const closeUploadButton =
     document.getElementById("closeUploadButton");
+
+const calendarButton =
+    document.getElementById(
+        "calendarButton"
+    );
+
+
+calendarButton.addEventListener(
+    "click",
+    () => {
+
+        if (
+            typeof memoryDate.showPicker
+            === "function"
+        ) {
+
+            memoryDate.showPicker();
+
+        } else {
+
+            memoryDate.focus();
+            memoryDate.click();
+
+        }
+
+    }
+);
 
 
 /* SEARCH */

@@ -1879,22 +1879,103 @@ button,
         rgba(255,117,159,0.5);
 }
 
-.upload-notice {
-    margin-top: 14px;
+/* CUSTOM DATE PICKER */
 
-    padding: 11px 13px;
+.date-picker-field {
+    position: relative;
 
-    border-left:
-        2px solid var(--orange);
+    width: 100%;
+
+    display: flex;
+    align-items: center;
+}
+
+.date-picker-field input {
+    padding-right: 56px;
+}
+
+
+/* Hide the browser's default tiny calendar icon */
+
+.date-picker-field
+input[type="date"]
+::-webkit-calendar-picker-indicator {
+    opacity: 0;
+
+    pointer-events: none;
+}
+
+
+/* Calendar button */
+
+.calendar-button {
+    position: absolute;
+
+    right: 6px;
+    top: 50%;
+
+    width: 34px;
+    height: 34px;
+
+    display: grid;
+    place-items: center;
+
+    transform:
+        translateY(-50%);
+
+    border:
+        1px solid
+        rgba(255,117,159,0.24);
+
+    border-radius: 8px;
 
     background:
-        rgba(255,135,95,0.04);
+        linear-gradient(
+            135deg,
+            rgba(255,135,95,0.1),
+            rgba(255,117,159,0.1)
+        );
 
-    color: #8b716e;
+    color: var(--pink-light);
 
-    font-size: 10px;
+    cursor: pointer;
 
-    line-height: 1.6;
+    transition:
+        border-color 160ms ease,
+        background 160ms ease,
+        transform 160ms ease;
+}
+
+
+.calendar-button:hover {
+    border-color:
+        rgba(255,117,159,0.6);
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(255,135,95,0.2),
+            rgba(255,117,159,0.2)
+        );
+
+    transform:
+        translateY(-50%)
+        scale(1.05);
+}
+
+
+.calendar-button:active {
+    transform:
+        translateY(-50%)
+        scale(0.96);
+}
+
+
+.calendar-button svg {
+    width: 17px;
+    height: 17px;
+
+    pointer-events: none;
 }
 
 .develop-button {
