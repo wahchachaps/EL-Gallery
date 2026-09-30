@@ -364,6 +364,42 @@
                             JANUARY 2026
                         </p>
 
+                        <div
+                            class="viewer-set-context"
+                            id="viewerSetContext"
+                            hidden
+                        >
+                            <p id="viewerSetLabel"></p>
+                            <div
+                                class="viewer-set-progress"
+                                id="viewerSetProgress"
+                            ></div>
+                        </div>
+
+                        <div
+                            class="viewer-note"
+                            id="viewerNote"
+                            hidden
+                        >
+                            <button
+                                type="button"
+                                class="viewer-note-toggle"
+                                id="viewerNoteToggle"
+                                aria-expanded="false"
+                            >
+                                READ NOTE
+                            </button>
+
+                            <div
+                                class="viewer-note-panel"
+                                id="viewerNotePanel"
+                                hidden
+                            >
+                                <span>A LITTLE NOTE</span>
+                                <p id="viewerNoteText"></p>
+                            </div>
+                        </div>
+
                     </div>
 
 
@@ -496,6 +532,16 @@
                         id="editMemoryCaption"
                         maxlength="100"
                     >
+                </label>
+
+                <label class="memory-action-field">
+                    <span>Private Note · Optional</span>
+                    <textarea
+                        id="editMemoryPrivateNote"
+                        maxlength="2000"
+                        rows="4"
+                        placeholder="Add something just for us..."
+                    ></textarea>
                 </label>
 
 
@@ -894,6 +940,16 @@
                     </label>
 
                 </div>
+
+                <label class="field private-note-field">
+                    <span>Private Note · Optional</span>
+                    <textarea
+                        id="memoryPrivateNote"
+                        maxlength="2000"
+                        rows="3"
+                        placeholder="Add something just for us..."
+                    ></textarea>
+                </label>
 
                 <button
                     type="submit"

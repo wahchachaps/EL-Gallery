@@ -131,6 +131,10 @@ let uploadSharedDate = null;
 
 let uploadSharedCaption = null;
 
+let uploadSharedPrivateNote = null;
+
+let viewerNoteExpanded = false;
+
 let isUploadingMemories = false;
 
 let draggedUploadItemId = null;
@@ -222,6 +226,27 @@ const viewerCaption =
 const viewerMonth =
     document.getElementById("viewerMonth");
 
+const viewerSetContext =
+    document.getElementById("viewerSetContext");
+
+const viewerSetLabel =
+    document.getElementById("viewerSetLabel");
+
+const viewerSetProgress =
+    document.getElementById("viewerSetProgress");
+
+const viewerNote =
+    document.getElementById("viewerNote");
+
+const viewerNoteToggle =
+    document.getElementById("viewerNoteToggle");
+
+const viewerNotePanel =
+    document.getElementById("viewerNotePanel");
+
+const viewerNoteText =
+    document.getElementById("viewerNoteText");
+
 const viewerFavoriteButton =
     document.getElementById("viewerFavoriteButton");
 
@@ -254,6 +279,9 @@ const editMemoryDate =
 
 const editMemoryCaption =
     document.getElementById("editMemoryCaption");
+
+const editMemoryPrivateNote =
+    document.getElementById("editMemoryPrivateNote");
 
 const editMemorySetNotice =
     document.getElementById("editMemorySetNotice");
@@ -359,6 +387,9 @@ const memoryDate =
 
 const memoryCaption =
     document.getElementById("memoryCaption");
+
+const memoryPrivateNote =
+    document.getElementById("memoryPrivateNote");
 
 const uploadPreview =
     document.getElementById("uploadPreview");
@@ -523,8 +554,17 @@ function normalizeMemory(memory) {
             ? memory.groupOrder
             : Number.isInteger(memory.group_order)
                 ? memory.group_order
-                : null
+                : null,
+        privateNote: memory.privateNote ?? memory.private_note ?? null
     };
+}
+
+
+function getMemorySetMembers(memory) {
+
+    return memory.groupId
+        ? sortedMemories().filter(item => item.groupId === memory.groupId)
+        : [];
 }
 
 
@@ -534,9 +574,7 @@ function getMemorySetInfo(memory) {
         return null;
     }
 
-    const members = sortedMemories().filter(
-        item => item.groupId === memory.groupId
-    );
+    const members = getMemorySetMembers(memory);
 
     const index = members.findIndex(item => item.id === memory.id);
 
@@ -1970,6 +2008,14 @@ function renderViewer() {
         return;
     }
 
+    viewerMedia.querySelectorAll("video").forEach(video => {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+    });
+
+    viewerNoteExpanded = false;
+
 
     viewerFrame.textContent =
         `FRAME ${
@@ -2003,6 +2049,10 @@ function renderViewer() {
                 memory.date
             )
         }`.toUpperCase();
+
+    renderViewerSetContext(memory);
+
+    renderViewerPrivateNote(memory);
 
 
     viewerFavoriteButton.dataset.id =
@@ -2073,6 +2123,95 @@ function renderViewer() {
         `;
     }
 }
+
+
+function renderViewerSetContext(memory) {
+
+    const members = getMemorySetMembers(memory);
+    const position = members.findIndex(item => item.id === memory.id);
+
+    if (position === -1 || members.length < 2) {
+        viewerSetContext.hidden = true;
+        viewerSetProgress.innerHTML = "";
+        return;
+    }
+
+    viewerSetContext.hidden = false;
+    viewerSetLabel.textContent =
+        `MEMORY SET · ${position + 1} OF ${members.length}`;
+
+    if (members.length <= 10) {
+        viewerSetProgress.className = "viewer-set-progress dots";
+        viewerSetProgress.innerHTML = members.map((member, index) => `
+            <button
+                type="button"
+                class="viewer-set-dot ${index === position ? "current" : index < position ? "passed" : ""}"
+                data-set-memory-id="${member.id}"
+                aria-label="Open memory ${index + 1} of ${members.length}"
+                aria-current="${index === position ? "true" : "false"}"
+            ><span></span></button>
+        `).join("");
+    } else {
+        const progress = members.length === 1
+            ? 0
+            : position / (members.length - 1);
+
+        viewerSetProgress.className = "viewer-set-progress bar";
+        viewerSetProgress.innerHTML = `
+            <div class="viewer-set-track" aria-hidden="true">
+                <span style="width:${progress * 100}%"></span>
+                <i style="left:${progress * 100}%"></i>
+            </div>
+        `;
+    }
+}
+
+
+function renderViewerPrivateNote(memory) {
+
+    const note = typeof memory.privateNote === "string"
+        ? memory.privateNote.trim()
+        : "";
+
+    viewerNote.hidden = !note;
+    viewerNotePanel.hidden = true;
+    viewerNoteToggle.hidden = !note;
+    viewerNoteToggle.textContent = "READ NOTE";
+    viewerNoteToggle.setAttribute("aria-expanded", "false");
+    viewerNoteText.textContent = note;
+}
+
+
+viewerSetProgress.addEventListener("click", event => {
+    const target = event.target.closest("[data-set-memory-id]");
+
+    if (!target) {
+        return;
+    }
+
+    const ordered = sortedMemories();
+    const index = ordered.findIndex(
+        memory => memory.id === target.dataset.setMemoryId
+    );
+
+    if (index !== -1) {
+        currentViewerIndex = index;
+        renderViewer();
+    }
+});
+
+
+viewerNoteToggle.addEventListener("click", () => {
+    viewerNoteExpanded = !viewerNoteExpanded;
+    viewerNotePanel.hidden = !viewerNoteExpanded;
+    viewerNoteToggle.textContent = viewerNoteExpanded
+        ? "HIDE NOTE"
+        : "READ NOTE";
+    viewerNoteToggle.setAttribute(
+        "aria-expanded",
+        String(viewerNoteExpanded)
+    );
+});
 
 
 function showNextViewerMemory() {
@@ -2854,6 +2993,8 @@ function openEditMemoryModal(id) {
 
     editMemoryCaption.value = memory.caption || "";
 
+    editMemoryPrivateNote.value = memory.privateNote || "";
+
     const setSize = memory.groupId
         ? memories.filter(item => item.groupId === memory.groupId).length
         : 0;
@@ -2861,7 +3002,7 @@ function openEditMemoryModal(id) {
     editMemorySetNotice.hidden = !memory.groupId;
 
     editMemorySetNotice.textContent = memory.groupId
-        ? `EDITING MEMORY SET · Changes to the date and caption apply to all ${setSize} memories.`
+        ? `EDITING MEMORY SET · Changes to the date, caption, and private note apply to all ${setSize} memories.`
         : "";
 
     openModal(editMemoryModal);
@@ -2934,9 +3075,16 @@ editMemoryForm.addEventListener(
 
         const nextCaption = editMemoryCaption.value.trim();
 
+        const nextPrivateNote = editMemoryPrivateNote.value.trim();
+
 
         if (!nextDate) {
             showToast("Choose a date.");
+            return;
+        }
+
+        if (nextPrivateNote.length > 2000) {
+            showToast("Private notes can contain up to 2000 characters.");
             return;
         }
 
@@ -2963,7 +3111,8 @@ editMemoryForm.addEventListener(
                     },
                     body: JSON.stringify({
                         caption: nextCaption,
-                        date: nextDate
+                        date: nextDate,
+                        private_note: nextPrivateNote || null
                     })
                 }
             );
@@ -3014,7 +3163,8 @@ editMemoryForm.addEventListener(
                         ? {
                             ...memory,
                             caption: returnedMemory.caption ?? nextCaption,
-                            date: returnedMemory.date ?? nextDate
+                            date: returnedMemory.date ?? nextDate,
+                            privateNote: (returnedMemory.privateNote ?? nextPrivateNote) || null
                         }
                         : memory
                 );
@@ -3024,7 +3174,8 @@ editMemoryForm.addEventListener(
                     ...returnedMemory,
                     id: memoryId,
                     caption: returnedMemory.caption ?? nextCaption,
-                    date: returnedMemory.date ?? nextDate
+                    date: returnedMemory.date ?? nextDate,
+                    privateNote: (returnedMemory.privateNote ?? nextPrivateNote) || null
                 });
             }
 
@@ -3277,6 +3428,7 @@ function resetUploadState() {
     uploadGroupId = null;
     uploadSharedDate = null;
     uploadSharedCaption = null;
+    uploadSharedPrivateNote = null;
     draggedUploadItemId = null;
     nextUploadItemId = 0;
     uploadProgress.hidden = true;
@@ -3284,6 +3436,7 @@ function resetUploadState() {
     memoryFile.value = "";
     memoryDate.disabled = false;
     memoryCaption.disabled = false;
+    memoryPrivateNote.disabled = false;
     updateDevelopButton();
 }
 
@@ -3578,12 +3731,13 @@ function renderUploadProgress(current = 0, total = 0) {
 }
 
 
-async function uploadMemoryItem(item, date, caption) {
+async function uploadMemoryItem(item, date, caption, privateNote) {
 
     const formData = new FormData();
     formData.append("file", item.file);
     formData.append("date", date);
     formData.append("caption", caption);
+    formData.append("private_note", privateNote || "");
 
     if (uploadGroupId) {
         formData.append("group_id", uploadGroupId);
@@ -3627,8 +3781,16 @@ uploadForm.addEventListener("submit", async event => {
     }
 
     if (uploadSharedDate === null) {
+        const privateNote = memoryPrivateNote.value.trim();
+
+        if (privateNote.length > 2000) {
+            showToast("Private notes can contain up to 2000 characters.");
+            return;
+        }
+
         uploadSharedDate = memoryDate.value;
         uploadSharedCaption = memoryCaption.value.trim() || "Untitled memory";
+        uploadSharedPrivateNote = privateNote || null;
 
         if (selectedUploadFiles.length > 1) {
             uploadGroupId = crypto.randomUUID();
@@ -3652,10 +3814,12 @@ uploadForm.addEventListener("submit", async event => {
     closeUploadButton.disabled = true;
     memoryDate.disabled = true;
     memoryCaption.disabled = true;
+    memoryPrivateNote.disabled = true;
     renderUploadPreview();
 
     const date = uploadSharedDate;
     const caption = uploadSharedCaption;
+    const privateNote = uploadSharedPrivateNote;
     let completed = 0;
 
     renderUploadProgress(completed, targets.length);
@@ -3666,7 +3830,12 @@ uploadForm.addEventListener("submit", async event => {
         renderUploadProgress(completed + 1, targets.length);
 
         try {
-            const memory = await uploadMemoryItem(item, date, caption);
+            const memory = await uploadMemoryItem(
+                item,
+                date,
+                caption,
+                privateNote
+            );
             item.status = "success";
             memories.push(memory);
         } catch (error) {

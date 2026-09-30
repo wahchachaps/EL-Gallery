@@ -1646,6 +1646,10 @@ button,
 
 .viewer-main {
     width: 100%;
+    max-height: 88vh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: thin;
 }
 
 .viewer-topline {
@@ -1710,6 +1714,148 @@ button,
     font-family: monospace;
 
     font-size: 8px;
+}
+
+.viewer-set-context {
+    display: grid;
+    gap: 6px;
+    margin-top: 11px;
+}
+
+.viewer-set-context[hidden],
+.viewer-note[hidden],
+.viewer-note-panel[hidden] {
+    display: none;
+}
+
+.viewer-set-context > p {
+    color: var(--orange-light);
+    font-family: monospace;
+    font-size: 8px;
+    letter-spacing: 1.1px;
+}
+
+.viewer-set-progress.dots {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+}
+
+.viewer-set-dot {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
+.viewer-set-dot span {
+    width: 5px;
+    height: 5px;
+    border: 1px solid rgba(255,190,187,0.4);
+    border-radius: 50%;
+    background: transparent;
+    transition: background-color 180ms ease, transform 180ms ease;
+}
+
+.viewer-set-dot.passed span {
+    background: rgba(255,190,187,0.45);
+}
+
+.viewer-set-dot.current span {
+    border-color: var(--pink-light);
+    background: var(--pink-light);
+    transform: scale(1.45);
+}
+
+.viewer-set-dot:focus-visible {
+    outline: 1px solid var(--pink-light);
+    outline-offset: -5px;
+}
+
+.viewer-set-progress.bar {
+    width: min(220px, 100%);
+    padding-block: 8px;
+}
+
+.viewer-set-track {
+    position: relative;
+    height: 1px;
+    background: rgba(255,255,255,0.14);
+}
+
+.viewer-set-track span {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: rgba(255,190,187,0.55);
+}
+
+.viewer-set-track i {
+    position: absolute;
+    top: 50%;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--pink-light);
+    transform: translate(-50%, -50%);
+}
+
+.viewer-note {
+    display: grid;
+    justify-items: start;
+    margin-top: 9px;
+}
+
+.viewer-note-toggle {
+    min-width: 80px;
+    min-height: 30px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-family: monospace;
+    font-size: 8px;
+    letter-spacing: 1.1px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.viewer-note-toggle:hover,
+.viewer-note-toggle:focus-visible {
+    color: var(--pink-light);
+}
+
+.viewer-note-panel {
+    max-width: 560px;
+    padding: 11px 14px;
+    border-left: 1px solid rgba(255,117,159,0.35);
+    background: rgba(255,255,255,0.018);
+    animation: reveal-note 240ms ease both;
+}
+
+.viewer-note-panel > span {
+    color: var(--orange-light);
+    font-family: monospace;
+    font-size: 8px;
+    letter-spacing: 1.2px;
+}
+
+.viewer-note-panel p {
+    margin-top: 7px;
+    color: var(--muted);
+    font-family: Georgia, serif;
+    font-size: 13px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+@keyframes reveal-note {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .viewer-arrow,
@@ -2091,6 +2237,31 @@ button,
     background: #0c0809;
 
     color: var(--cream);
+}
+
+.field textarea,
+.memory-action-field textarea {
+    width: 100%;
+    min-height: 82px;
+    resize: vertical;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 3px;
+    outline: none;
+    padding: 11px 13px;
+    background: #0c0809;
+    color: var(--cream);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.field textarea:focus,
+.memory-action-field textarea:focus {
+    border-color: rgba(255,117,159,0.5);
+}
+
+.private-note-field {
+    margin-top: 14px;
 }
 
 .field input:focus {
@@ -2614,6 +2785,10 @@ input[type="date"]
         transition-duration:
             0.001ms !important;
     }
+
+    .viewer-note-panel {
+        animation: none;
+    }
 }
 
 
@@ -3044,6 +3219,15 @@ input[type="date"]
         align-items: flex-start;
         flex-direction: column;
         gap: 12px;
+    }
+
+    .viewer-memory-details {
+        width: 100%;
+    }
+
+    .viewer-set-progress.bar,
+    .viewer-note-panel {
+        max-width: 100%;
     }
 
     .viewer-actions {
