@@ -7,7 +7,7 @@ const API_URL =
     "https://el-gallery-api.elvincemaranan.workers.dev";
     
 const CURRENT_YEAR = 2026;
-const START_MONTH = 5;
+const START_MONTH = 6;
 
 const MONTHS = [
     "January",
