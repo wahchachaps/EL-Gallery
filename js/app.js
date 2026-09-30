@@ -2,9 +2,12 @@
    EL GALLERY
    ========================================================= */
 
-const CURRENT_YEAR = 2026;
+
 const API_URL =
     "https://el-gallery-api.elvincemaranan.workers.dev";
+    
+const CURRENT_YEAR = 2026;
+const START_MONTH = 5;
 
 const MONTHS = [
     "January",
@@ -20,6 +23,16 @@ const MONTHS = [
     "November",
     "December"
 ];
+
+const VISIBLE_MONTHS =
+    MONTHS
+        .map((name, index) => ({
+            name,
+            index
+        }))
+        .filter(month =>
+            month.index >= START_MONTH
+        );
 
 const MONTH_NOTES = [
     "where the year began ♡",
@@ -446,8 +459,9 @@ function buildTimeline() {
         "";
 
 
-    MONTHS.forEach(
-        (month, index) => {
+    VISIBLE_MONTHS.forEach(
+    ({ name: month, index: monthIndex }, rollIndex) => {
+
 
             const button =
                 document.createElement(
@@ -459,7 +473,7 @@ function buildTimeline() {
                 "timeline-month";
 
             button.dataset.month =
-                index;
+                monthIndex;
 
             button.textContent =
                 month
@@ -472,7 +486,7 @@ function buildTimeline() {
                 () => {
 
                     scrollToMonth(
-                        index
+                        monthIndex
                     );
 
                 }
@@ -925,8 +939,8 @@ function buildGallery() {
         }`;
 
 
-    MONTHS.forEach(
-        (month, monthIndex) => {
+    VISIBLE_MONTHS.forEach(
+    ({ name: month, index: monthIndex }, rollIndex) => {
 
             const monthMemories =
                 ordered.filter(
@@ -984,7 +998,7 @@ function buildGallery() {
                         <span>
                             ROLL
                             ${String(
-                                monthIndex + 1
+                                rollIndex + 1
                             ).padStart(
                                 2,
                                 "0"
