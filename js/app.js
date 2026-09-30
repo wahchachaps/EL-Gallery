@@ -119,7 +119,23 @@ let isSavingMemory = false;
 
 let isDeletingMemory = false;
 
-let selectedUploadFile = null;
+const MAX_UPLOAD_FILES = 20;
+
+const MAX_UPLOAD_FILE_SIZE = 100 * 1024 * 1024;
+
+let selectedUploadFiles = [];
+
+let uploadGroupId = null;
+
+let uploadSharedDate = null;
+
+let uploadSharedCaption = null;
+
+let isUploadingMemories = false;
+
+let draggedUploadItemId = null;
+
+let nextUploadItemId = 0;
 
 let videoObserver = null;
 
@@ -239,6 +255,9 @@ const editMemoryDate =
 const editMemoryCaption =
     document.getElementById("editMemoryCaption");
 
+const editMemorySetNotice =
+    document.getElementById("editMemorySetNotice");
+
 const editCalendarButton =
     document.getElementById("editCalendarButton");
 
@@ -344,6 +363,15 @@ const memoryCaption =
 const uploadPreview =
     document.getElementById("uploadPreview");
 
+const uploadProgress =
+    document.getElementById("uploadProgress");
+
+const developButton =
+    document.getElementById("developButton");
+
+const developButtonLabel =
+    document.getElementById("developButtonLabel");
+
 const dropZone =
     document.getElementById("dropZone");
 
@@ -438,11 +466,83 @@ function escapeHTML(value) {
 
 function sortedMemories() {
 
-    return [...memories].sort(
-        (a, b) =>
-            new Date(a.date) -
-            new Date(b.date)
+    const indexed = memories.map(
+        (memory, index) => ({ memory, index })
     );
+
+    const groupAnchors = new Map();
+
+    indexed.forEach(({ memory, index }) => {
+        if (memory.groupId) {
+            groupAnchors.set(
+                memory.groupId,
+                Math.min(groupAnchors.get(memory.groupId) ?? index, index)
+            );
+        }
+    });
+
+    return indexed
+        .sort((a, b) => {
+            const dateDifference =
+                new Date(a.memory.date) - new Date(b.memory.date);
+
+            if (dateDifference) {
+                return dateDifference;
+            }
+
+            if (
+                a.memory.groupId &&
+                a.memory.groupId === b.memory.groupId
+            ) {
+                return (
+                    (Number.isInteger(a.memory.groupOrder) ? a.memory.groupOrder : a.index) -
+                    (Number.isInteger(b.memory.groupOrder) ? b.memory.groupOrder : b.index)
+                );
+            }
+
+            const aAnchor = a.memory.groupId
+                ? groupAnchors.get(a.memory.groupId)
+                : a.index;
+
+            const bAnchor = b.memory.groupId
+                ? groupAnchors.get(b.memory.groupId)
+                : b.index;
+
+            return aAnchor - bAnchor;
+        })
+        .map(({ memory }) => memory);
+}
+
+
+function normalizeMemory(memory) {
+
+    return {
+        ...memory,
+        groupId: memory.groupId ?? memory.group_id ?? null,
+        groupOrder: Number.isInteger(memory.groupOrder)
+            ? memory.groupOrder
+            : Number.isInteger(memory.group_order)
+                ? memory.group_order
+                : null
+    };
+}
+
+
+function getMemorySetInfo(memory) {
+
+    if (!memory.groupId) {
+        return null;
+    }
+
+    const members = sortedMemories().filter(
+        item => item.groupId === memory.groupId
+    );
+
+    const index = members.findIndex(item => item.id === memory.id);
+
+    return index === -1
+        ? null
+        : { position: index + 1, total: members.length };
 }
 
 
@@ -917,6 +1017,9 @@ function createMonthFrames(
         .map(
             (memory, index) => {
 
+                const setInfo =
+                    getMemorySetInfo(memory);
+
                 const frame =
                     String(
                         index + 1
@@ -958,6 +1061,12 @@ function createMonthFrames(
                             <span class="memory-frame-number">
                                 ${frame}
                             </span>
+
+                            ${
+                                setInfo && setInfo.total > 1
+                                    ? `<span class="memory-set-position">SET ${setInfo.position} / ${setInfo.total}</span>`
+                                    : ""
+                            }
 
 
                             <div class="memory-overlay-bottom">
@@ -1043,7 +1152,7 @@ async function loadMemories() {
 
         memories =
             Array.isArray(data.memories)
-                ? data.memories
+                ? data.memories.map(normalizeMemory)
                 : [];
 
 
@@ -2745,6 +2854,16 @@ function openEditMemoryModal(id) {
 
     editMemoryCaption.value = memory.caption || "";
 
+    const setSize = memory.groupId
+        ? memories.filter(item => item.groupId === memory.groupId).length
+        : 0;
+
+    editMemorySetNotice.hidden = !memory.groupId;
+
+    editMemorySetNotice.textContent = memory.groupId
+        ? `EDITING MEMORY SET · Changes to the date and caption apply to all ${setSize} memories.`
+        : "";
+
     openModal(editMemoryModal);
 }
 
@@ -2875,14 +2994,39 @@ editMemoryForm.addEventListener(
             const returnedMemory =
                 data.memory || data.updatedMemory || data;
 
+            const returnedMemories = Array.isArray(data.memories)
+                ? data.memories.map(normalizeMemory)
+                : null;
 
-            memories[memoryIndex] = {
-                ...currentMemory,
-                ...returnedMemory,
-                id: memoryId,
-                caption: returnedMemory.caption ?? nextCaption,
-                date: returnedMemory.date ?? nextDate
-            };
+            if (returnedMemories) {
+                const replacements = new Map(
+                    returnedMemories.map(memory => [memory.id, memory])
+                );
+
+                memories = memories.map(memory =>
+                    replacements.has(memory.id)
+                        ? { ...memory, ...replacements.get(memory.id) }
+                        : memory
+                );
+            } else if (currentMemory.groupId) {
+                memories = memories.map(memory =>
+                    memory.groupId === currentMemory.groupId
+                        ? {
+                            ...memory,
+                            caption: returnedMemory.caption ?? nextCaption,
+                            date: returnedMemory.date ?? nextDate
+                        }
+                        : memory
+                );
+            } else {
+                memories[memoryIndex] = normalizeMemory({
+                    ...currentMemory,
+                    ...returnedMemory,
+                    id: memoryId,
+                    caption: returnedMemory.caption ?? nextCaption,
+                    date: returnedMemory.date ?? nextDate
+                });
+            }
 
 
             buildGallery();
@@ -2895,7 +3039,11 @@ editMemoryForm.addEventListener(
 
             openViewerById(memoryId);
 
-            showToast("Memory updated");
+            showToast(
+                currentMemory.groupId
+                    ? "Memory set updated"
+                    : "Memory updated"
+            );
 
         }
 
@@ -3099,387 +3247,478 @@ confirmDeleteMemoryButton.addEventListener(
    UPLOAD
    ========================================================= */
 
-function openUploadModal(
-    monthIndex = null
-) {
+function revokeUploadItem(item) {
 
-    selectedUploadFile =
-        null;
-
-
-    uploadForm.reset();
-
-    resetUploadPreview();
-
-
-    let date =
-        new Date();
-
-
-    if (
-        monthIndex !== null
-    ) {
-
-        date =
-            new Date(
-                CURRENT_YEAR,
-                monthIndex,
-                1
-            );
+    if (item?.previewUrl) {
+        URL.revokeObjectURL(item.previewUrl);
     }
+}
 
 
-    memoryDate.value =
-        dateToInputValue(
-            date
-        );
+function updateDevelopButton() {
+
+    const count = selectedUploadFiles.length;
+    const failedCount = selectedUploadFiles.filter(
+        item => item.status === "failed"
+    ).length;
+
+    developButtonLabel.textContent = uploadSharedDate !== null && failedCount
+        ? `RETRY ${failedCount} FAILED`
+        : count > 1
+            ? `DEVELOP ${count} MEMORIES`
+            : "DEVELOP MEMORY";
+}
 
 
-    openModal(
-        uploadModal
-    );
+function resetUploadState() {
+
+    selectedUploadFiles.forEach(revokeUploadItem);
+    selectedUploadFiles = [];
+    uploadGroupId = null;
+    uploadSharedDate = null;
+    uploadSharedCaption = null;
+    draggedUploadItemId = null;
+    nextUploadItemId = 0;
+    uploadProgress.hidden = true;
+    uploadProgress.innerHTML = "";
+    memoryFile.value = "";
+    memoryDate.disabled = false;
+    memoryCaption.disabled = false;
+    updateDevelopButton();
 }
 
 
 function resetUploadPreview() {
 
     uploadPreview.innerHTML = `
-
-        <div class="upload-plus">
-            +
-        </div>
-
-        <strong>
-            Choose a memory
-        </strong>
-
-        <span>
-            or drop it here
-        </span>
-
-        <small>
-            JPG · PNG · WEBP · GIF · MP4 · WEBM
-        </small>
-
+        <div class="upload-plus">+</div>
+        <strong>Choose memories</strong>
+        <span>or drop them here</span>
+        <small>JPG · PNG · WEBP · GIF · MP4 · WEBM</small>
     `;
 }
 
 
-function handleSelectedFile(file) {
+function renderUploadPreview() {
 
-    if (!file) {
+    if (!selectedUploadFiles.length) {
+        resetUploadPreview();
+        updateDevelopButton();
         return;
     }
 
+    const locked = uploadSharedDate !== null;
 
-    const image =
-        file.type.startsWith(
-            "image/"
-        );
+    uploadPreview.innerHTML = `
+        <div class="selected-memories-heading">
+            <strong>SELECTED MEMORIES</strong>
+            <span>${selectedUploadFiles.length} EXPOSURE${selectedUploadFiles.length === 1 ? "" : "S"}</span>
+        </div>
+        <div class="selected-memories-grid">
+            ${selectedUploadFiles.map((item, index) => `
+                <article
+                    class="selected-memory ${item.status}"
+                    data-upload-id="${item.id}"
+                    draggable="${!locked && !isUploadingMemories}"
+                >
+                    <div class="selected-memory-media">
+                        ${item.file.type.startsWith("image/")
+                            ? `<img src="${item.previewUrl}" alt="">`
+                            : `<video src="${item.previewUrl}" muted playsinline preload="metadata"></video>`}
+                        <span class="selected-memory-order">${index + 1}</span>
+                        <span class="selected-memory-type">${item.file.type === "image/gif" ? "GIF" : item.file.type.startsWith("video/") ? "VIDEO" : "PHOTO"}</span>
+                    </div>
+                    <p title="${escapeHTML(item.file.name)}">${escapeHTML(item.file.name)}</p>
+                    <div class="selected-memory-actions">
+                        <button type="button" data-move="left" aria-label="Move ${escapeHTML(item.file.name)} left" ${locked || index === 0 ? "disabled" : ""}>←</button>
+                        <button type="button" data-move="right" aria-label="Move ${escapeHTML(item.file.name)} right" ${locked || index === selectedUploadFiles.length - 1 ? "disabled" : ""}>→</button>
+                        <button type="button" class="remove-selected-memory" data-remove aria-label="Remove ${escapeHTML(item.file.name)}" ${locked ? "disabled" : ""}>×</button>
+                    </div>
+                </article>
+            `).join("")}
+        </div>
+        <small class="reorder-help">${locked ? "Upload order locked" : "Drag to reorder or use the arrow controls"}</small>
+    `;
 
-    const video =
-        file.type.startsWith(
-            "video/"
-        );
-
-
-    if (
-        !image &&
-        !video
-    ) {
-
-        showToast(
-            "Choose an image, GIF or video."
-        );
-
-        return;
-    }
-
-
-    selectedUploadFile =
-        file;
-
-
-    const url =
-        URL.createObjectURL(
-            file
-        );
-
-
-    if (image) {
-
-        uploadPreview.innerHTML = `
-
-            <img
-                src="${url}"
-                alt="Preview"
-            >
-
-        `;
-
-    } else {
-
-        uploadPreview.innerHTML = `
-
-            <video
-                src="${url}"
-
-                autoplay
-                muted
-                loop
-                playsinline
-                controls
-            ></video>
-
-        `;
-    }
+    updateDevelopButton();
 }
 
 
-memoryFile.addEventListener(
-    "change",
-    event => {
+function addSelectedFiles(files) {
 
-        handleSelectedFile(
-            event.target.files[0]
-        );
-
+    if (isUploadingMemories || uploadSharedDate !== null) {
+        return;
     }
-);
 
+    const incoming = Array.from(files || []);
 
-[
-    "dragenter",
-    "dragover"
-]
-.forEach(name => {
+    if (selectedUploadFiles.length + incoming.length > MAX_UPLOAD_FILES) {
+        showToast("A Memory Set can contain up to 20 files.");
+        memoryFile.value = "";
+        return;
+    }
 
-    dropZone.addEventListener(
-        name,
-        event => {
+    let rejectedType = false;
+    let rejectedSize = false;
 
-            event.preventDefault();
+    incoming.forEach(file => {
+        const supported =
+            file.type.startsWith("image/") ||
+            file.type.startsWith("video/");
 
+        if (!supported) {
+            rejectedType = true;
+            return;
         }
-    );
 
+        if (file.size > MAX_UPLOAD_FILE_SIZE) {
+            rejectedSize = true;
+            return;
+        }
+
+        selectedUploadFiles.push({
+            id: `upload-${++nextUploadItemId}`,
+            file,
+            previewUrl: URL.createObjectURL(file),
+            status: "pending",
+            error: null,
+            order: null
+        });
+    });
+
+    if (rejectedType) {
+        showToast("Only images, GIFs and videos are supported.");
+    } else if (rejectedSize) {
+        showToast("Each file must be 100 MB or smaller.");
+    }
+
+    memoryFile.value = "";
+    renderUploadPreview();
+}
+
+
+function openUploadModal(monthIndex = null) {
+
+    resetUploadState();
+    uploadForm.reset();
+    resetUploadPreview();
+
+    const date = monthIndex === null
+        ? new Date()
+        : new Date(CURRENT_YEAR, monthIndex, 1);
+
+    memoryDate.value = dateToInputValue(date);
+    openModal(uploadModal);
+}
+
+
+function closeUploadModal() {
+
+    if (isUploadingMemories) {
+        showToast("Please wait for the current upload to finish.");
+        return;
+    }
+
+    resetUploadState();
+    uploadForm.reset();
+    resetUploadPreview();
+    closeModal(uploadModal);
+}
+
+
+memoryFile.addEventListener("change", event => {
+    addSelectedFiles(event.target.files);
 });
 
 
-dropZone.addEventListener(
-    "drop",
-    event => {
-
+["dragenter", "dragover"].forEach(name => {
+    dropZone.addEventListener(name, event => {
         event.preventDefault();
+        dropZone.classList.add("drag-over");
+    });
+});
 
 
-        handleSelectedFile(
-            event.dataTransfer
-                .files[0]
-        );
+dropZone.addEventListener("dragleave", () => {
+    dropZone.classList.remove("drag-over");
+});
 
+
+dropZone.addEventListener("drop", event => {
+    event.preventDefault();
+    dropZone.classList.remove("drag-over");
+    addSelectedFiles(event.dataTransfer.files);
+});
+
+
+dropZone.addEventListener("click", event => {
+    if (!event.target.closest("button") && !isUploadingMemories) {
+        memoryFile.click();
     }
-);
+});
 
 
-uploadForm.addEventListener(
-    "submit",
-
-    async event => {
-
+dropZone.addEventListener("keydown", event => {
+    if (
+        (event.key === "Enter" || event.key === " ") &&
+        !event.target.closest("button")
+    ) {
         event.preventDefault();
+        memoryFile.click();
+    }
+});
 
 
-        if (!selectedUploadFile) {
+uploadPreview.addEventListener("click", event => {
+    const card = event.target.closest("[data-upload-id]");
 
-            showToast(
-                "Choose a memory first."
-            );
+    if (!card || isUploadingMemories || uploadSharedDate !== null) {
+        return;
+    }
 
+    const index = selectedUploadFiles.findIndex(
+        item => item.id === card.dataset.uploadId
+    );
+
+    if (index === -1) {
+        return;
+    }
+
+    if (event.target.closest("[data-remove]")) {
+        revokeUploadItem(selectedUploadFiles[index]);
+        selectedUploadFiles.splice(index, 1);
+    } else {
+        const moveButton = event.target.closest("[data-move]");
+
+        if (!moveButton) {
             return;
-
         }
 
+        const destination = moveButton.dataset.move === "left"
+            ? index - 1
+            : index + 1;
 
-        if (!memoryDate.value) {
-
-            showToast(
-                "Choose a date."
-            );
-
+        if (destination < 0 || destination >= selectedUploadFiles.length) {
             return;
-
         }
 
+        const [item] = selectedUploadFiles.splice(index, 1);
+        selectedUploadFiles.splice(destination, 0, item);
+    }
 
-        const submitButton =
-            uploadForm.querySelector(
-                'button[type="submit"]'
-            );
-
-
-        const originalHTML =
-            submitButton
-                ? submitButton.innerHTML
-                : "";
+    renderUploadPreview();
+});
 
 
-        if (submitButton) {
+uploadPreview.addEventListener("dragstart", event => {
+    if (uploadSharedDate !== null || isUploadingMemories) {
+        event.preventDefault();
+        return;
+    }
 
-            submitButton.disabled = true;
+    const card = event.target.closest("[data-upload-id]");
+    draggedUploadItemId = card?.dataset.uploadId || null;
 
-            submitButton.textContent =
-                "DEVELOPING...";
+    if (draggedUploadItemId) {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", draggedUploadItemId);
+    }
+});
 
+
+uploadPreview.addEventListener("dragover", event => {
+    if (event.target.closest("[data-upload-id]") && draggedUploadItemId) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+    }
+});
+
+
+uploadPreview.addEventListener("drop", event => {
+    const target = event.target.closest("[data-upload-id]");
+
+    if (!target || !draggedUploadItemId || uploadSharedDate !== null) {
+        return;
+    }
+
+    event.preventDefault();
+
+    const from = selectedUploadFiles.findIndex(
+        item => item.id === draggedUploadItemId
+    );
+    const to = selectedUploadFiles.findIndex(
+        item => item.id === target.dataset.uploadId
+    );
+
+    if (from !== -1 && to !== -1 && from !== to) {
+        const [item] = selectedUploadFiles.splice(from, 1);
+        selectedUploadFiles.splice(to, 0, item);
+        renderUploadPreview();
+    }
+
+    draggedUploadItemId = null;
+});
+
+
+function renderUploadProgress(current = 0, total = 0) {
+
+    uploadProgress.hidden = false;
+    uploadProgress.innerHTML = `
+        <strong>DEVELOPING MEMORIES</strong>
+        <span>${current} of ${total}</span>
+        <ul>
+            ${selectedUploadFiles.map(item => `
+                <li class="${item.status}">
+                    <span>${item.status === "success" ? "✓" : item.status === "uploading" ? "↑" : item.status === "failed" ? "!" : "○"}</span>
+                    <span>${escapeHTML(item.file.name)}</span>
+                </li>
+            `).join("")}
+        </ul>
+    `;
+}
+
+
+async function uploadMemoryItem(item, date, caption) {
+
+    const formData = new FormData();
+    formData.append("file", item.file);
+    formData.append("date", date);
+    formData.append("caption", caption);
+
+    if (uploadGroupId) {
+        formData.append("group_id", uploadGroupId);
+        formData.append("group_order", String(item.order));
+    }
+
+    const response = await fetch(`${API_URL}/api/upload`, {
+        method: "POST",
+        body: formData
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(data.error || data.message || "Upload failed.");
+    }
+
+    if (!data.memory) {
+        throw new Error("Server did not return the memory.");
+    }
+
+    return normalizeMemory(data.memory);
+}
+
+
+uploadForm.addEventListener("submit", async event => {
+    event.preventDefault();
+
+    if (isUploadingMemories) {
+        return;
+    }
+
+    if (!selectedUploadFiles.length) {
+        showToast("Choose a memory first.");
+        return;
+    }
+
+    if (!memoryDate.value) {
+        showToast("Choose a date.");
+        return;
+    }
+
+    if (uploadSharedDate === null) {
+        uploadSharedDate = memoryDate.value;
+        uploadSharedCaption = memoryCaption.value.trim() || "Untitled memory";
+
+        if (selectedUploadFiles.length > 1) {
+            uploadGroupId = crypto.randomUUID();
         }
 
+        selectedUploadFiles.forEach((item, index) => {
+            item.order = uploadGroupId ? index : null;
+        });
+    }
+
+    const targets = selectedUploadFiles.filter(
+        item => item.status === "pending" || item.status === "failed"
+    );
+
+    if (!targets.length) {
+        return;
+    }
+
+    isUploadingMemories = true;
+    developButton.disabled = true;
+    closeUploadButton.disabled = true;
+    memoryDate.disabled = true;
+    memoryCaption.disabled = true;
+    renderUploadPreview();
+
+    const date = uploadSharedDate;
+    const caption = uploadSharedCaption;
+    let completed = 0;
+
+    renderUploadProgress(completed, targets.length);
+
+    for (const item of targets) {
+        item.status = "uploading";
+        item.error = null;
+        renderUploadProgress(completed + 1, targets.length);
 
         try {
-
-            const formData =
-                new FormData();
-
-
-            formData.append(
-                "file",
-                selectedUploadFile
-            );
-
-
-            formData.append(
-                "date",
-                memoryDate.value
-            );
-
-
-            formData.append(
-                "caption",
-                memoryCaption.value.trim()
-                ||
-                "Untitled memory"
-            );
-
-
-            const response =
-                await fetch(
-                    `${API_URL}/api/upload`,
-                    {
-                        method: "POST",
-                        body: formData
-                    }
-                );
-
-
-            const data =
-                await response.json();
-
-
-            if (!response.ok) {
-
-                throw new Error(
-                    data.error ||
-                    "Upload failed."
-                );
-
-            }
-
-
-            const memory =
-                data.memory;
-
-
-            if (!memory) {
-
-                throw new Error(
-                    "Server did not return the memory."
-                );
-
-            }
-
-
-            memories.push(
-                memory
-            );
-
-
-            const month =
-                getMonthIndex(
-                    memory.date
-                );
-
-
-            buildGallery();
-
-            updateTimeline();
-
-
-            closeModal(
-                uploadModal
-            );
-
-
-            selectedUploadFile =
-                null;
-
-
-            showToast(
-                "Exposure developed ♡"
-            );
-
-
-            setTimeout(
-                () => {
-
-                    scrollToMonth(
-                        month
-                    );
-
-                },
-                150
-            );
-
+            const memory = await uploadMemoryItem(item, date, caption);
+            item.status = "success";
+            memories.push(memory);
+        } catch (error) {
+            console.error(`Upload failed for ${item.file.name}:`, error);
+            item.status = "failed";
+            item.error = error.message || "Upload failed.";
         }
 
-        catch (error) {
-
-            console.error(
-                "Upload failed:",
-                error
-            );
-
-
-            showToast(
-                error.message ||
-                "Upload failed."
-            );
-
-        }
-
-        finally {
-
-            if (submitButton) {
-
-                submitButton.disabled =
-                    false;
-
-                submitButton.innerHTML =
-                    originalHTML;
-
-            }
-
-        }
-
+        completed += 1;
+        renderUploadProgress(completed, targets.length);
     }
-);
+
+    isUploadingMemories = false;
+    developButton.disabled = false;
+    closeUploadButton.disabled = false;
+
+    buildGallery();
+    updateTimeline();
+
+    const failures = selectedUploadFiles.filter(
+        item => item.status === "failed"
+    );
+    const successCount = selectedUploadFiles.filter(
+        item => item.status === "success"
+    ).length;
+
+    if (failures.length) {
+        renderUploadPreview();
+        showToast(
+            `${successCount} of ${selectedUploadFiles.length} memories developed. ${failures.length} failed.`
+        );
+        return;
+    }
+
+    const month = getMonthIndex(date);
+    const total = selectedUploadFiles.length;
+
+    resetUploadState();
+    uploadForm.reset();
+    closeModal(uploadModal);
+
+    showToast(
+        total === 1
+            ? "Exposure developed ♡"
+            : `${total} memories developed ♡`
+    );
+
+    setTimeout(() => scrollToMonth(month), 150);
+});
 
 
-closeUploadButton.addEventListener(
-    "click",
-    () =>
-        closeModal(
-            uploadModal
-        )
-);
+closeUploadButton.addEventListener("click", closeUploadModal);
 
 
 /* =========================================================
@@ -3960,10 +4199,7 @@ document
 
         element.addEventListener(
             "click",
-            () =>
-                closeModal(
-                    uploadModal
-                )
+        closeUploadModal
         );
 
     });
@@ -4073,6 +4309,13 @@ document.addEventListener(
                 ) {
 
                     closeDeleteMemoryModal();
+
+                } else if (
+                    uploadModal.classList
+                        .contains("open")
+                ) {
+
+                    closeUploadModal();
 
                 } else {
 

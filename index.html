@@ -448,6 +448,12 @@
 
             <h2 id="editMemoryTitle">Update this memory.</h2>
 
+            <p
+                class="edit-set-notice"
+                id="editMemorySetNotice"
+                hidden
+            ></p>
+
 
             <form id="editMemoryForm" class="memory-action-form">
 
@@ -783,15 +789,19 @@
 
             <form id="uploadForm">
 
-                <label
+                <div
                     class="drop-zone"
                     id="dropZone"
+                    role="button"
+                    tabindex="0"
+                    aria-label="Choose photos, GIFs or videos"
                 >
 
                     <input
                         type="file"
                         id="memoryFile"
                         accept="image/*,video/*"
+                        multiple
                         hidden
                     >
 
@@ -819,7 +829,14 @@
 
                     </div>
 
-                </label>
+                </div>
+
+                <div
+                    class="upload-progress"
+                    id="uploadProgress"
+                    aria-live="polite"
+                    hidden
+                ></div>
 
 
                 <div class="form-grid">
@@ -881,8 +898,9 @@
                 <button
                     type="submit"
                     class="develop-button"
+                    id="developButton"
                 >
-                    DEVELOP FILM
+                    <span id="developButtonLabel">DEVELOP MEMORY</span>
                     <span>→</span>
                 </button>
 
