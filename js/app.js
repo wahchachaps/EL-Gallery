@@ -163,6 +163,40 @@ const pendingPreviewPlayRetries = new WeakSet();
 
 let activeGalleryPreviewVideo = null;
 
+const MEMORY_SET_PRELOAD_ROOT_MARGIN = "0px 560px";
+
+const MEDIA_PRELOAD_CONCURRENCY = 4;
+
+const MEDIA_PRELOAD_TIMEOUT = 30000;
+
+const MEDIA_PRELOAD_PRIORITY = {
+    nextFrame: 80,
+    near: 120,
+    hover: 220,
+    viewer: 260,
+    click: 320
+};
+
+let memorySetPreloadObserver = null;
+
+const observedMemorySetCovers = new Set();
+
+const preloadingMemorySets = new Set();
+
+const preloadedMemorySets = new Set();
+
+const mediaPreloadStatus = new Map();
+
+const mediaPreloadTasks = new Map();
+
+const mediaPreloadResources = new Map();
+
+const mediaPreloadQueue = [];
+
+let activeMediaPreloads = 0;
+
+let mediaPreloadSequence = 0;
+
 let monthRevealObserver = null;
 
 let hasRenderedGallery = false;
@@ -561,6 +595,20 @@ function markMediaReady(media, failed = false) {
             "is-media-error",
             failed
         );
+
+        const setFrame = media.closest(
+            ".memory-set-member"
+        );
+
+        setFrame?.classList.toggle(
+            "is-media-ready",
+            !failed
+        );
+
+        setFrame?.classList.toggle(
+            "is-media-error",
+            failed
+        );
     }
 }
 
@@ -723,6 +771,540 @@ function getOrderedSetMembers(groupId, source = sortedMemories()) {
                 (sourcePositions.get(a.id) ?? 0) -
                 (sourcePositions.get(b.id) ?? 0);
         });
+}
+
+
+/* =========================================================
+   PREDICTIVE MEDIA PRELOADING
+   ========================================================= */
+
+function isPreloadableMemory(memory) {
+
+    return Boolean(
+        memory?.src &&
+        (
+            memory.type === "image" ||
+            memory.type === "gif" ||
+            memory.type === "video"
+        )
+    );
+}
+
+
+function getMediaPreloadKey(memory) {
+
+    return isPreloadableMemory(memory)
+        ? `${memory.type}:${memory.src}`
+        : null;
+}
+
+
+function isMediaPreloadReady(memory) {
+
+    const key = getMediaPreloadKey(memory);
+
+    return key
+        ? mediaPreloadStatus.get(key) === "ready"
+        : false;
+}
+
+
+function getMemorySetPreloadMembers(groupId) {
+
+    return getOrderedSetMembers(groupId)
+        .slice(1)
+        .filter(isPreloadableMemory);
+}
+
+
+function prioritizeMediaPreloadQueue() {
+
+    mediaPreloadQueue.sort(
+        (a, b) =>
+            b.priority - a.priority ||
+            a.sequence - b.sequence
+    );
+}
+
+
+function updateMemorySetPreloadState(groupId) {
+
+    if (!groupId) {
+        return;
+    }
+
+
+    const members =
+        getMemorySetPreloadMembers(groupId);
+
+
+    if (!members.length) {
+        preloadingMemorySets.delete(groupId);
+        preloadedMemorySets.add(groupId);
+        return;
+    }
+
+
+    const statuses = members.map(memory =>
+        mediaPreloadStatus.get(
+            getMediaPreloadKey(memory)
+        )
+    );
+
+    const allSettled = statuses.every(status =>
+        status === "ready" ||
+        status === "failed"
+    );
+
+    const hasPending = statuses.some(status =>
+        status === "queued" ||
+        status === "loading"
+    );
+
+
+    if (allSettled) {
+        preloadingMemorySets.delete(groupId);
+        preloadedMemorySets.add(groupId);
+    } else if (!hasPending) {
+        preloadingMemorySets.delete(groupId);
+    }
+}
+
+
+function finishMediaPreload(
+    task,
+    successful
+) {
+
+    if (
+        mediaPreloadStatus.get(task.key) !==
+        "loading"
+    ) {
+        return;
+    }
+
+
+    window.clearTimeout(task.timeout);
+
+    const resource =
+        mediaPreloadResources.get(task.key);
+
+
+    if (resource) {
+        resource.onload = null;
+        resource.onerror = null;
+        resource.onloadedmetadata = null;
+
+        if (resource.tagName === "VIDEO") {
+            resource.removeAttribute("src");
+            resource.load();
+        } else if (!successful) {
+            resource.src = "";
+        }
+    }
+
+
+    mediaPreloadResources.delete(task.key);
+    mediaPreloadTasks.delete(task.key);
+
+    mediaPreloadStatus.set(
+        task.key,
+        successful
+            ? "ready"
+            : "failed"
+    );
+
+    activeMediaPreloads = Math.max(
+        0,
+        activeMediaPreloads - 1
+    );
+
+
+    task.groupIds.forEach(
+        updateMemorySetPreloadState
+    );
+
+    drainMediaPreloadQueue();
+}
+
+
+function startMediaPreload(task) {
+
+    mediaPreloadStatus.set(
+        task.key,
+        "loading"
+    );
+
+    activeMediaPreloads += 1;
+
+    task.timeout = window.setTimeout(
+        () => finishMediaPreload(task, false),
+        MEDIA_PRELOAD_TIMEOUT
+    );
+
+
+    if (
+        task.memory.type === "image" ||
+        task.memory.type === "gif"
+    ) {
+        const image = new Image();
+
+        image.decoding = "async";
+        image.fetchPriority =
+            task.priority >= MEDIA_PRELOAD_PRIORITY.hover
+                ? "high"
+                : "low";
+
+        image.onload = async () => {
+            if (typeof image.decode === "function") {
+                try {
+                    await image.decode();
+                } catch {
+                    // The source is loaded even if explicit decode is unavailable.
+                }
+            }
+
+            finishMediaPreload(task, true);
+        };
+
+        image.onerror = () => {
+            finishMediaPreload(task, false);
+        };
+
+        mediaPreloadResources.set(
+            task.key,
+            image
+        );
+
+        image.src = task.memory.src;
+        return;
+    }
+
+
+    const video =
+        document.createElement("video");
+
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+    video.disablePictureInPicture = true;
+
+    video.onloadedmetadata = () => {
+        finishMediaPreload(task, true);
+    };
+
+    video.onerror = () => {
+        finishMediaPreload(task, false);
+    };
+
+    mediaPreloadResources.set(
+        task.key,
+        video
+    );
+
+    video.src = task.memory.src;
+    video.load();
+}
+
+
+function drainMediaPreloadQueue() {
+
+    while (
+        activeMediaPreloads < MEDIA_PRELOAD_CONCURRENCY &&
+        mediaPreloadQueue.length
+    ) {
+        const task = mediaPreloadQueue.shift();
+
+        if (
+            mediaPreloadStatus.get(task.key) !==
+            "queued"
+        ) {
+            continue;
+        }
+
+        startMediaPreload(task);
+    }
+}
+
+
+function queueMediaPreload(
+    memory,
+    groupId,
+    priority
+) {
+
+    const key =
+        getMediaPreloadKey(memory);
+
+
+    if (!key) {
+        return;
+    }
+
+
+    const status =
+        mediaPreloadStatus.get(key);
+
+
+    if (
+        status === "ready" ||
+        status === "failed"
+    ) {
+        return;
+    }
+
+
+    const existingTask =
+        mediaPreloadTasks.get(key);
+
+
+    if (existingTask) {
+        if (groupId) {
+            existingTask.groupIds.add(groupId);
+        }
+
+        existingTask.priority = Math.max(
+            existingTask.priority,
+            priority
+        );
+
+        const resource =
+            mediaPreloadResources.get(key);
+
+        if (
+            resource?.tagName === "IMG" &&
+            existingTask.priority >=
+                MEDIA_PRELOAD_PRIORITY.hover
+        ) {
+            resource.fetchPriority = "high";
+        }
+
+        if (status === "queued") {
+            prioritizeMediaPreloadQueue();
+        }
+
+        return;
+    }
+
+
+    const task = {
+        key,
+        memory,
+        priority,
+        sequence: mediaPreloadSequence,
+        groupIds: new Set(
+            groupId
+                ? [groupId]
+                : []
+        ),
+        timeout: null
+    };
+
+    mediaPreloadSequence += 1;
+
+    mediaPreloadTasks.set(key, task);
+    mediaPreloadStatus.set(key, "queued");
+    mediaPreloadQueue.push(task);
+
+    prioritizeMediaPreloadQueue();
+    drainMediaPreloadQueue();
+}
+
+
+function preloadMemorySet(
+    groupId,
+    priority = MEDIA_PRELOAD_PRIORITY.near
+) {
+
+    const members =
+        getMemorySetPreloadMembers(groupId);
+
+
+    if (!members.length) {
+        preloadedMemorySets.add(groupId);
+        return;
+    }
+
+
+    const alreadySettled = members.every(memory => {
+        const status = mediaPreloadStatus.get(
+            getMediaPreloadKey(memory)
+        );
+
+        return status === "ready" || status === "failed";
+    });
+
+
+    if (alreadySettled) {
+        preloadingMemorySets.delete(groupId);
+        preloadedMemorySets.add(groupId);
+        return;
+    }
+
+
+    preloadedMemorySets.delete(groupId);
+    preloadingMemorySets.add(groupId);
+
+    members.forEach(memory => {
+        queueMediaPreload(
+            memory,
+            groupId,
+            priority
+        );
+    });
+
+    updateMemorySetPreloadState(groupId);
+}
+
+
+function shouldPredictivelyPreloadSets() {
+
+    return !Boolean(
+        navigator.connection?.saveData
+    );
+}
+
+
+function setupMemorySetPreloadObserver() {
+
+    if (
+        memorySetPreloadObserver ||
+        typeof IntersectionObserver !== "function"
+    ) {
+        return;
+    }
+
+
+    memorySetPreloadObserver =
+        new IntersectionObserver(
+            entries => {
+                entries.forEach(entry => {
+                    if (!entry.isIntersecting) {
+                        return;
+                    }
+
+                    const cover = entry.target;
+                    const groupId =
+                        cover.dataset.expandGroup;
+
+                    memorySetPreloadObserver.unobserve(
+                        cover
+                    );
+
+                    observedMemorySetCovers.delete(
+                        cover
+                    );
+
+                    preloadMemorySet(
+                        groupId,
+                        MEDIA_PRELOAD_PRIORITY.near
+                    );
+                });
+            },
+            {
+                root: galleryTrack,
+                rootMargin:
+                    MEMORY_SET_PRELOAD_ROOT_MARGIN,
+                threshold: 0
+            }
+        );
+}
+
+
+function observeCollapsedMemorySets() {
+
+    if (!shouldPredictivelyPreloadSets()) {
+        return;
+    }
+
+
+    setupMemorySetPreloadObserver();
+
+    document
+        .querySelectorAll("[data-expand-group]")
+        .forEach(cover => {
+            const groupId =
+                cover.dataset.expandGroup;
+
+            if (
+                preloadedMemorySets.has(groupId) ||
+                observedMemorySetCovers.has(cover)
+            ) {
+                return;
+            }
+
+            observedMemorySetCovers.add(cover);
+            memorySetPreloadObserver?.observe(cover);
+        });
+}
+
+
+function cleanupObservedMemorySetCovers() {
+
+    observedMemorySetCovers.forEach(cover => {
+        memorySetPreloadObserver?.unobserve(cover);
+    });
+
+    observedMemorySetCovers.clear();
+}
+
+
+function preloadViewerSetNeighbors(memory) {
+
+    if (!memory.groupId) {
+        return;
+    }
+
+
+    const members =
+        getMemorySetMembers(memory);
+
+    const index = members.findIndex(
+        item => item.id === memory.id
+    );
+
+
+    if (index === -1) {
+        return;
+    }
+
+
+    [members[index + 1], members[index - 1]]
+        .filter(item =>
+            item &&
+            members.indexOf(item) > 0
+        )
+        .forEach(item => {
+            queueMediaPreload(
+                item,
+                memory.groupId,
+                MEDIA_PRELOAD_PRIORITY.viewer
+            );
+        });
+}
+
+
+function preloadNextOurFilmsFrame(
+    monthMemories,
+    currentIndex
+) {
+
+    if (monthMemories.length < 2) {
+        return;
+    }
+
+
+    const nextMemory =
+        monthMemories[
+            (currentIndex + 1) %
+            monthMemories.length
+        ];
+
+    queueMediaPreload(
+        nextMemory,
+        null,
+        MEDIA_PRELOAD_PRIORITY.nextFrame
+    );
 }
 
 
@@ -1021,8 +1603,26 @@ function buildTimeline() {
 
 function createMemoryMedia(
     memory,
-    previewBehavior = "gallery"
+    previewBehavior = "gallery",
+    mediaHints = {}
 ) {
+
+    const isSetMember =
+        Boolean(mediaHints.setMember);
+
+    const setPosition =
+        Number(mediaHints.setPosition) || 0;
+
+    const setMediaIsPrepared =
+        isSetMember &&
+        isMediaPreloadReady(memory);
+
+    const shouldLoadImageEagerly =
+        isSetMember &&
+        (
+            setMediaIsPrepared ||
+            setPosition <= 3
+        );
 
     /*
         GIF files automatically animate
@@ -1043,8 +1643,11 @@ function createMemoryMedia(
                     memory.caption ||
                     "Memory"
                 )}"
-                loading="lazy"
+                loading="${shouldLoadImageEagerly ? "eager" : "lazy"}"
                 decoding="async"
+                ${isSetMember
+                    ? `fetchpriority="${setPosition <= 3 ? "high" : "low"}"`
+                    : ""}
                 draggable="false"
             >
 
@@ -1397,6 +2000,19 @@ document.addEventListener(
         }
 
 
+        const preloadGroupId =
+            host.dataset.expandGroup ||
+            host.dataset.preloadGroup;
+
+
+        if (preloadGroupId) {
+            preloadMemorySet(
+                preloadGroupId,
+                MEDIA_PRELOAD_PRIORITY.hover
+            );
+        }
+
+
         playMutedPreview(
             host.querySelector(
                 ".hover-preview-video"
@@ -1580,7 +2196,14 @@ function createMonthFrames(
                     ${setInfo ? `data-memory-set="${escapeHTML(setInfo.groupId)}"` : ""}
                     style="--frame-stagger:${revealDelay}ms;--set-stagger:${setInfo ? Math.min(setInfo.position - 1, 8) * 32 : 0}ms"
                 >
-                    ${createMemoryMedia(memory)}
+                    ${createMemoryMedia(
+                        memory,
+                        "gallery",
+                        {
+                            setMember: Boolean(setInfo),
+                            setPosition: setInfo?.position || 0
+                        }
+                    )}
 
                     ${memory.type === "video"
                         ? `<div class="video-indicator">● LIVE</div>`
@@ -1733,6 +2356,7 @@ function buildGallery(preserveSetTransitions = false) {
     }
 
     cleanupGalleryVideoPreviews();
+    cleanupObservedMemorySetCovers();
     pauseHoverPreviewVideos(
         monthsContainer
     );
@@ -1928,6 +2552,8 @@ function buildGallery(preserveSetTransitions = false) {
     */
 
     observeGalleryVideoPreviews();
+
+    observeCollapsedMemorySets();
 
     revealReadyMedia(
         monthsContainer
@@ -2149,6 +2775,11 @@ function toggleGalleryMemorySet(
 
 
     if (shouldExpand) {
+        preloadMemorySet(
+            groupId,
+            MEDIA_PRELOAD_PRIORITY.click
+        );
+
         pausePreviewVideo(
             trigger.querySelector(
                 ".hover-preview-video"
@@ -2904,6 +3535,8 @@ function renderViewer(direction = null) {
 
     renderViewerPrivateNote(memory);
 
+    preloadViewerSetNeighbors(memory);
+
 
     viewerFavoriteButton.dataset.id =
         memory.id;
@@ -3438,6 +4071,96 @@ function createOurFilmsMedia(memory) {
 }
 
 
+function applyOurFilmsIntrinsicSizing(media) {
+
+    if (!media) {
+        return;
+    }
+
+
+    const width =
+        media.tagName === "VIDEO"
+            ? media.videoWidth
+            : media.naturalWidth;
+
+    const height =
+        media.tagName === "VIDEO"
+            ? media.videoHeight
+            : media.naturalHeight;
+
+
+    if (!width || !height) {
+        return;
+    }
+
+
+    const aspectRatio = width / height;
+
+    const orientation =
+        aspectRatio > 1.08
+            ? "landscape"
+            : aspectRatio < 0.92
+                ? "portrait"
+                : "square";
+
+
+    media.classList.remove(
+        "our-films-portrait",
+        "our-films-landscape",
+        "our-films-square"
+    );
+
+    media.classList.add(
+        "our-films-intrinsic-media",
+        `our-films-${orientation}`
+    );
+
+    media.style.setProperty(
+        "--our-films-media-aspect",
+        `${width} / ${height}`
+    );
+
+    media.style.setProperty(
+        "--our-films-media-ratio",
+        String(aspectRatio)
+    );
+
+    media.style.setProperty(
+        "--our-films-media-inverse-ratio",
+        String(1 / aspectRatio)
+    );
+}
+
+
+function prepareOurFilmsIntrinsicSizing() {
+
+    const media =
+        ourFilmsMedia.querySelector(
+            "img, video"
+        );
+
+
+    if (!media) {
+        return;
+    }
+
+
+    const readyEvent =
+        media.tagName === "VIDEO"
+            ? "loadedmetadata"
+            : "load";
+
+
+    media.addEventListener(
+        readyEvent,
+        () => applyOurFilmsIntrinsicSizing(media),
+        { once: true }
+    );
+
+    applyOurFilmsIntrinsicSizing(media);
+}
+
+
 function renderOurFilms(
     animate = true,
     animateCopy = false
@@ -3517,6 +4240,11 @@ function renderOurFilms(
     const memory =
         monthMemories[ourFilmsSlideIndex];
 
+    preloadNextOurFilmsFrame(
+        monthMemories,
+        ourFilmsSlideIndex
+    );
+
 
     ourFilmsCounter.textContent =
         `FRAME ${String(ourFilmsSlideIndex + 1).padStart(2, "0")} / ${String(monthMemories.length).padStart(2, "0")}`;
@@ -3531,6 +4259,8 @@ function renderOurFilms(
 
     ourFilmsMedia.innerHTML =
         createOurFilmsMedia(memory);
+
+    prepareOurFilmsIntrinsicSizing();
 
     revealReadyMedia(ourFilmsMedia);
 
@@ -5200,6 +5930,9 @@ function renderSearchResults(items) {
                     class="search-result ${setSize > 1 ? "search-memory-set" : ""}"
 
                     data-search-id="${memory.id}"
+                    ${setSize > 1 && memory.groupId
+                        ? `data-preload-group="${escapeHTML(memory.groupId)}"`
+                        : ""}
                 >
 
                     <div class="search-result-preview">
