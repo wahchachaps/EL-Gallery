@@ -101,6 +101,8 @@ let ourFilmsPlaying = false;
 
 let ourFilmsTimer = null;
 
+let ourFilmsCloseCleanupTimer = null;
+
 let ourFilmsRenderToken = 0;
 
 let ourFilmsActiveVideo = null;
@@ -139,13 +141,43 @@ const expandedMemorySets = new Set();
 
 let isUploadingMemories = false;
 
+let uploadCloseCleanupTimer = null;
+
 let draggedUploadItemId = null;
 
 let nextUploadItemId = 0;
 
-let videoObserver = null;
+const GALLERY_VIDEO_VISIBILITY_THRESHOLD = 0.65;
+
+let galleryVideoObserver = null;
+
+const observedGalleryVideos = new Set();
+
+const galleryVideoVisibility = new Map();
+
+const previewPlaybackIntent = new WeakSet();
+
+const pendingPreviewPlayRequests = new WeakSet();
+
+const pendingPreviewPlayRetries = new WeakSet();
+
+let activeGalleryPreviewVideo = null;
+
+let monthRevealObserver = null;
+
+let hasRenderedGallery = false;
+
+const animatingMemorySets = new Set();
+
+const memorySetAnimationTimers = new Map();
+
+let viewerTransitionTimer = null;
+
+const modalReturnFocus = new WeakMap();
 
 let isPointerDragging = false;
+
+let activePointerId = null;
 
 let pointerStartX = 0;
 
@@ -215,6 +247,9 @@ const viewerModal =
 
 const viewerMedia =
     document.getElementById("viewerMedia");
+
+const viewerMain =
+    viewerModal.querySelector(".viewer-main");
 
 const viewerFrame =
     document.getElementById("viewerFrame");
@@ -329,6 +364,11 @@ const confirmDeleteMemoryButton =
 
 const ourFilmsModal =
     document.getElementById("ourFilmsModal");
+
+const ourFilmsDialog =
+    ourFilmsModal.querySelector(
+        ".our-films-dialog"
+    );
 
 const ourFilmsCloseButton =
     document.getElementById("ourFilmsCloseButton");
@@ -495,6 +535,74 @@ function escapeHTML(value) {
 
         .replaceAll("'", "&#039;");
 }
+
+
+function prefersReducedMotion() {
+
+    return window.matchMedia(
+        "(prefers-reduced-motion: reduce)"
+    ).matches;
+}
+
+
+function markMediaReady(media, failed = false) {
+
+    if (
+        media &&
+        media.matches(
+            ".media-reveal"
+        )
+    ) {
+        media.classList.add(
+            "is-media-ready"
+        );
+
+        media.classList.toggle(
+            "is-media-error",
+            failed
+        );
+    }
+}
+
+
+function revealReadyMedia(root = document) {
+
+    root
+        .querySelectorAll(
+            ".media-reveal"
+        )
+        .forEach(media => {
+            if (
+                (
+                    media.tagName === "IMG" &&
+                    media.complete
+                ) ||
+                (
+                    media.tagName === "VIDEO" &&
+                    media.readyState >= 1
+                )
+            ) {
+                markMediaReady(media);
+            }
+        });
+}
+
+
+[
+    "load",
+    "loadedmetadata",
+    "loadeddata",
+    "error"
+].forEach(eventName => {
+    document.addEventListener(
+        eventName,
+        event => markMediaReady(
+            event.target,
+            eventName === "error"
+        ),
+        true
+    );
+});
 
 
 function sortedMemories() {
@@ -911,7 +1019,10 @@ function buildTimeline() {
    MEDIA
    ========================================================= */
 
-function createMemoryMedia(memory) {
+function createMemoryMedia(
+    memory,
+    previewBehavior = "gallery"
+) {
 
     /*
         GIF files automatically animate
@@ -926,13 +1037,14 @@ function createMemoryMedia(memory) {
         return `
 
             <img
-                class="memory-media"
+                class="memory-media media-reveal"
                 src="${memory.src}"
                 alt="${escapeHTML(
                     memory.caption ||
                     "Memory"
                 )}"
                 loading="lazy"
+                decoding="async"
                 draggable="false"
             >
 
@@ -941,14 +1053,17 @@ function createMemoryMedia(memory) {
 
 
     /*
-        Videos are muted previews.
-
-        JavaScript automatically plays them
-        when visible and pauses them when
-        they leave the screen.
+        Gallery videos and hover-only covers
+        receive separate playback markers.
+        Both remain muted metadata previews.
     */
 
     if (memory.type === "video") {
+
+        const previewClass =
+            previewBehavior === "hover"
+                ? "hover-preview-video"
+                : "gallery-preview-video";
 
         return `
 
@@ -956,7 +1071,8 @@ function createMemoryMedia(memory) {
                 class="
                     memory-media
                     memory-video
-                    preview-video
+                    ${previewClass}
+                    media-reveal
                 "
 
                 src="${memory.src}"
@@ -996,81 +1112,31 @@ function createMemoryMedia(memory) {
 
 
 /* =========================================================
-   VIDEO AUTOPLAY
+   VIDEO PREVIEW PLAYBACK
    ========================================================= */
 
-function setupVideoAutoplay() {
+function playMutedPreview(video) {
 
-    if (videoObserver) {
-
-        videoObserver.disconnect();
+    if (
+        !video ||
+        !video.isConnected
+    ) {
+        return;
     }
 
 
-    videoObserver =
-        new IntersectionObserver(
-
-            entries => {
-
-                entries.forEach(
-                    entry => {
-
-                        const video =
-                            entry.target;
+    previewPlaybackIntent.add(video);
 
 
-                        if (
-                            entry.isIntersecting &&
-                            entry.intersectionRatio >= 0.55
-                        ) {
-
-                            playPreviewVideo(
-                                video
-                            );
-
-                        } else {
-
-                            pausePreviewVideo(
-                                video
-                            );
-                        }
-
-                    }
-                );
-
-            },
-
-            {
-                root:
-                    galleryTrack,
-
-                threshold: [
-                    0,
-                    0.25,
-                    0.55,
-                    0.75,
-                    1
-                ]
-            }
-
-        );
+    if (!video.paused) {
+        return;
+    }
 
 
-    document
-        .querySelectorAll(
-            ".preview-video"
-        )
-        .forEach(video => {
-
-            videoObserver.observe(
-                video
-            );
-
-        });
-}
-
-
-function playPreviewVideo(video) {
+    if (pendingPreviewPlayRequests.has(video)) {
+        pendingPreviewPlayRetries.add(video);
+        return;
+    }
 
     video.muted = true;
 
@@ -1079,23 +1145,298 @@ function playPreviewVideo(video) {
     video.playsInline = true;
 
 
-    const promise =
-        video.play();
+    let playPromise = null;
 
 
-    if (promise) {
+    try {
+        playPromise = video.play();
+    } catch {
+        previewPlaybackIntent.delete(video);
+        return;
+    }
 
-        promise.catch(
-            () => {}
-        );
+
+    if (
+        playPromise &&
+        typeof playPromise.catch === "function"
+    ) {
+        pendingPreviewPlayRequests.add(video);
+
+        Promise.resolve(playPromise)
+            .catch(() => {})
+            .finally(() => {
+                pendingPreviewPlayRequests.delete(video);
+
+                const shouldRetry =
+                    pendingPreviewPlayRetries.has(video);
+
+                pendingPreviewPlayRetries.delete(video);
+
+                if (!previewPlaybackIntent.has(video)) {
+                    video.pause();
+                } else if (
+                    shouldRetry &&
+                    video.paused
+                ) {
+                    playMutedPreview(video);
+                }
+            });
     }
 }
 
 
-function pausePreviewVideo(video) {
+function pausePreviewVideo(
+    video,
+    reset = false
+) {
 
-    video.pause();
+    if (!video) {
+        return;
+    }
+
+    previewPlaybackIntent.delete(video);
+    pendingPreviewPlayRetries.delete(video);
+
+    if (!video.paused) {
+        video.pause();
+    }
+
+
+    if (reset) {
+        try {
+            video.currentTime = 0;
+        } catch {
+            // Metadata may not be ready yet; the preview is still paused.
+        }
+    }
 }
+
+
+function syncGalleryVideoPlayback() {
+
+    const playbackBlocked =
+        document.hidden ||
+        Boolean(document.querySelector(".modal.open"));
+
+    let nextVideo = null;
+    let highestRatio =
+        GALLERY_VIDEO_VISIBILITY_THRESHOLD;
+
+
+    if (!playbackBlocked) {
+        observedGalleryVideos.forEach(video => {
+            const ratio =
+                galleryVideoVisibility.get(video) || 0;
+
+            if (
+                video.isConnected &&
+                ratio >= highestRatio
+            ) {
+                nextVideo = video;
+                highestRatio = ratio;
+            }
+        });
+    }
+
+
+    observedGalleryVideos.forEach(video => {
+        if (video === nextVideo) {
+            playMutedPreview(video);
+        } else {
+            pausePreviewVideo(video);
+        }
+    });
+
+
+    activeGalleryPreviewVideo = nextVideo;
+}
+
+
+function setupGalleryVideoObserver() {
+
+    if (
+        galleryVideoObserver ||
+        typeof IntersectionObserver !== "function"
+    ) {
+        return;
+    }
+
+
+    galleryVideoObserver =
+        new IntersectionObserver(
+            entries => {
+                entries.forEach(entry => {
+                    if (!observedGalleryVideos.has(entry.target)) {
+                        return;
+                    }
+
+                    galleryVideoVisibility.set(
+                        entry.target,
+                        entry.isIntersecting
+                            ? entry.intersectionRatio
+                            : 0
+                    );
+                });
+
+                syncGalleryVideoPlayback();
+            },
+            {
+                root: galleryTrack,
+                threshold: [
+                    0,
+                    GALLERY_VIDEO_VISIBILITY_THRESHOLD,
+                    0.75,
+                    0.85,
+                    0.95,
+                    1
+                ]
+            }
+        );
+}
+
+
+function observeGalleryVideoPreviews() {
+
+    setupGalleryVideoObserver();
+
+
+    monthsContainer
+        .querySelectorAll(".gallery-preview-video")
+        .forEach(video => {
+            if (observedGalleryVideos.has(video)) {
+                return;
+            }
+
+            observedGalleryVideos.add(video);
+            galleryVideoVisibility.set(video, 0);
+            pausePreviewVideo(video);
+            galleryVideoObserver?.observe(video);
+        });
+}
+
+
+function unobserveGalleryVideo(video) {
+
+    galleryVideoObserver?.unobserve(video);
+    observedGalleryVideos.delete(video);
+    galleryVideoVisibility.delete(video);
+    pausePreviewVideo(video);
+
+
+    if (activeGalleryPreviewVideo === video) {
+        activeGalleryPreviewVideo = null;
+    }
+}
+
+
+function cleanupGalleryVideoPreviews() {
+
+    Array.from(observedGalleryVideos)
+        .forEach(unobserveGalleryVideo);
+}
+
+
+function pauseHoverPreviewVideos(
+    root = document,
+    reset = true
+) {
+
+    root
+        .querySelectorAll(".hover-preview-video")
+        .forEach(video => {
+            pausePreviewVideo(video, reset);
+        });
+}
+
+
+function canUseHoverVideoPreviews() {
+
+    return window.matchMedia(
+        "(hover: hover) and (pointer: fine)"
+    ).matches;
+}
+
+
+function getHoverPreviewHost(target) {
+
+    if (!(target instanceof Element)) {
+        return null;
+    }
+
+
+    return target.closest(
+        ".memory-set-cover, .search-result"
+    );
+}
+
+
+document.addEventListener(
+    "pointerover",
+    event => {
+        if (
+            document.hidden ||
+            event.pointerType !== "mouse" ||
+            !canUseHoverVideoPreviews()
+        ) {
+            return;
+        }
+
+
+        const host =
+            getHoverPreviewHost(event.target);
+
+
+        if (
+            !host ||
+            (
+                event.relatedTarget instanceof Node &&
+                host.contains(event.relatedTarget)
+            )
+        ) {
+            return;
+        }
+
+
+        playMutedPreview(
+            host.querySelector(
+                ".hover-preview-video"
+            )
+        );
+    }
+);
+
+
+document.addEventListener(
+    "pointerout",
+    event => {
+        if (event.pointerType !== "mouse") {
+            return;
+        }
+
+
+        const host =
+            getHoverPreviewHost(event.target);
+
+
+        if (
+            !host ||
+            (
+                event.relatedTarget instanceof Node &&
+                host.contains(event.relatedTarget)
+            )
+        ) {
+            return;
+        }
+
+
+        pausePreviewVideo(
+            host.querySelector(
+                ".hover-preview-video"
+            ),
+            true
+        );
+    }
+);
 
 
 /* =========================================================
@@ -1140,8 +1481,12 @@ function createMonthFrames(
             >
 
                 <strong>
-                    No film yet.
+                    NO EXPOSURES YET
                 </strong>
+
+                <small>
+                    Nothing developed for this month.
+                </small>
 
                 <span>
                     + ADD A MEMORY
@@ -1167,6 +1512,7 @@ function createMonthFrames(
                         data-cover-id="${escapeHTML(item.coverId)}"
                         aria-label="Collapse memory set with ${item.total} memories"
                         title="Collapse memory set"
+                        style="--set-stagger:${Math.min(item.total, 8) * 28}ms"
                     >
                         <span aria-hidden="true">&larr;</span>
                         <strong>COLLAPSE SET</strong>
@@ -1179,6 +1525,7 @@ function createMonthFrames(
             const memory = item.memory;
             const layout = getFrameLayout(visibleFrameIndex);
             const frame = String(visibleFrameIndex + 1).padStart(2, "0");
+            const revealDelay = Math.min(visibleFrameIndex, 8) * 34;
 
             visibleFrameIndex += 1;
 
@@ -1191,8 +1538,9 @@ function createMonthFrames(
                         data-expand-group="${escapeHTML(item.groupId)}"
                         aria-label="Open memory set with ${item.members.length} memories"
                         aria-expanded="false"
+                        style="--frame-stagger:${revealDelay}ms"
                     >
-                        ${createMemoryMedia(memory)}
+                        ${createMemoryMedia(memory, "hover")}
 
                         ${memory.type === "video"
                             ? `<div class="video-indicator">● LIVE</div>`
@@ -1230,12 +1578,19 @@ function createMonthFrames(
                     class="memory-frame ${layout} ${setInfo ? "memory-set-member" : ""}"
                     data-memory-id="${escapeHTML(memory.id)}"
                     ${setInfo ? `data-memory-set="${escapeHTML(setInfo.groupId)}"` : ""}
+                    style="--frame-stagger:${revealDelay}ms;--set-stagger:${setInfo ? Math.min(setInfo.position - 1, 8) * 32 : 0}ms"
                 >
                     ${createMemoryMedia(memory)}
 
                     ${memory.type === "video"
                         ? `<div class="video-indicator">● LIVE</div>`
                         : ""}
+
+                    <button
+                        type="button"
+                        class="memory-open-control"
+                        aria-label="Open ${escapeHTML(memory.caption || "memory")}"
+                    ></button>
 
                     <div class="memory-overlay">
                         <span class="memory-frame-number">${frame}</span>
@@ -1333,14 +1688,61 @@ async function loadMemories() {
 
 }
 
+
+function showGalleryLoadingState() {
+
+    monthsContainer.setAttribute(
+        "aria-busy",
+        "true"
+    );
+
+    monthsContainer.innerHTML = `
+        <section
+            class="gallery-loading"
+            aria-live="polite"
+            aria-label="Loading memories"
+        >
+            <div class="gallery-loading-film" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <strong>DEVELOPING THE ARCHIVE</strong>
+            <small>Loading memories…</small>
+        </section>
+    `;
+}
+
 /* =========================================================
    BUILD GALLERY
    ========================================================= */
 
-function buildGallery() {
+function buildGallery(preserveSetTransitions = false) {
+
+    monthsContainer.setAttribute(
+        "aria-busy",
+        "false"
+    );
+
+    if (!preserveSetTransitions) {
+        memorySetAnimationTimers.forEach(timer => {
+            window.clearTimeout(timer);
+        });
+        memorySetAnimationTimers.clear();
+        animatingMemorySets.clear();
+    }
+
+    cleanupGalleryVideoPreviews();
+    pauseHoverPreviewVideos(
+        monthsContainer
+    );
+
 
     monthsContainer.innerHTML =
         "";
+
+    const shouldRevealGallery =
+        !hasRenderedGallery;
 
 
     const ordered =
@@ -1398,7 +1800,9 @@ function buildGallery() {
 
 
             section.className =
-                "month-section";
+                shouldRevealGallery
+                    ? "month-section is-reveal-pending"
+                    : "month-section is-visible";
 
             section.id =
                 `month-${monthIndex}`;
@@ -1523,7 +1927,89 @@ function buildGallery() {
         after frames are created.
     */
 
-    setupVideoAutoplay();
+    observeGalleryVideoPreviews();
+
+    revealReadyMedia(
+        monthsContainer
+    );
+
+    setupMonthReveals();
+
+    hasRenderedGallery = true;
+}
+
+
+function setupMonthReveals() {
+
+    if (monthRevealObserver) {
+        monthRevealObserver.disconnect();
+        monthRevealObserver = null;
+    }
+
+
+    const pendingSections =
+        document.querySelectorAll(
+            ".month-section.is-reveal-pending"
+        );
+
+
+    if (!pendingSections.length) {
+        return;
+    }
+
+
+    if (
+        prefersReducedMotion() ||
+        typeof IntersectionObserver !== "function"
+    ) {
+        pendingSections.forEach(section => {
+            section.classList.add("is-visible");
+            section.classList.remove("is-reveal-pending");
+        });
+        return;
+    }
+
+
+    const observer =
+        new IntersectionObserver(
+            entries => {
+                entries.forEach(entry => {
+                    if (!entry.isIntersecting) {
+                        return;
+                    }
+
+                    entry.target.classList.add(
+                        "is-visible"
+                    );
+
+                    const revealedSection = entry.target;
+
+                    window.setTimeout(() => {
+                        if (revealedSection.isConnected) {
+                            revealedSection.classList.remove(
+                                "is-reveal-pending"
+                            );
+                        }
+                    }, 720);
+
+                    observer.unobserve(
+                        entry.target
+                    );
+                });
+            },
+            {
+                root: galleryTrack,
+                rootMargin: "0px 16%",
+                threshold: 0.12
+            }
+        );
+
+    monthRevealObserver = observer;
+
+
+    pendingSections.forEach(
+        section => observer.observe(section)
+    );
 }
 
 
@@ -1539,6 +2025,21 @@ function attachFrameEvents() {
         )
         .forEach(frame => {
 
+            const openControl =
+                frame.querySelector(
+                    ".memory-open-control"
+                );
+
+            const openFrame = () => {
+                openControl?.focus({
+                    preventScroll: true
+                });
+
+                openViewerById(
+                    frame.dataset.memoryId
+                );
+            };
+
             frame.addEventListener(
                 "click",
                 event => {
@@ -1551,10 +2052,7 @@ function attachFrameEvents() {
                         return;
                     }
 
-
-                    openViewerById(
-                        frame.dataset.memoryId
-                    );
+                    openFrame();
 
                 }
             );
@@ -1565,11 +2063,12 @@ function attachFrameEvents() {
     document
         .querySelectorAll("[data-expand-group]")
         .forEach(button => {
-            button.addEventListener("click", () => {
+            button.addEventListener("click", event => {
                 toggleGalleryMemorySet(
                     button.dataset.expandGroup,
                     true,
-                    button
+                    button,
+                    event.detail === 0
                 );
             });
         });
@@ -1578,11 +2077,12 @@ function attachFrameEvents() {
     document
         .querySelectorAll("[data-collapse-group]")
         .forEach(button => {
-            button.addEventListener("click", () => {
+            button.addEventListener("click", event => {
                 toggleGalleryMemorySet(
                     button.dataset.collapseGroup,
                     false,
-                    button
+                    button,
+                    event.detail === 0
                 );
             });
         });
@@ -1636,45 +2136,158 @@ function attachFrameEvents() {
 }
 
 
-function toggleGalleryMemorySet(groupId, shouldExpand, trigger) {
+function toggleGalleryMemorySet(
+    groupId,
+    shouldExpand,
+    trigger,
+    restoreFocus = false
+) {
 
-    const triggerRect = trigger.getBoundingClientRect();
-    const desiredLeft = shouldExpand
-        ? Math.max(
-            18,
-            Math.min(triggerRect.left, window.innerWidth - 240)
-        )
-        : 32;
+    if (animatingMemorySets.has(groupId)) {
+        return;
+    }
 
 
     if (shouldExpand) {
-        expandedMemorySets.add(groupId);
+        pausePreviewVideo(
+            trigger.querySelector(
+                ".hover-preview-video"
+            ),
+            true
+        );
     } else {
-        expandedMemorySets.delete(groupId);
+        document
+            .querySelectorAll("[data-memory-set]")
+            .forEach(frame => {
+                if (frame.dataset.memorySet !== groupId) {
+                    return;
+                }
+
+                frame
+                    .querySelectorAll(
+                        ".gallery-preview-video"
+                    )
+                    .forEach(unobserveGalleryVideo);
+            });
+
+        syncGalleryVideoPlayback();
     }
 
 
-    buildGallery();
+    const monthSection =
+        trigger.closest(".month-section");
+
+    monthSection?.classList.remove(
+        "is-reveal-pending"
+    );
+
+    trigger.classList.remove(
+        "is-returning"
+    );
 
 
-    const target = shouldExpand
-        ? Array.from(document.querySelectorAll("[data-memory-set]"))
-            .find(frame => frame.dataset.memorySet === groupId)
-        : Array.from(document.querySelectorAll("[data-expand-group]"))
-            .find(frame => frame.dataset.expandGroup === groupId);
+    const spatialAnchor = shouldExpand
+        ? trigger
+        : Array.from(document.querySelectorAll("[data-memory-set]"))
+            .find(frame => frame.dataset.memorySet === groupId) || trigger;
+
+    const triggerRect = spatialAnchor.getBoundingClientRect();
+    const desiredLeft = Math.max(
+        18,
+        Math.min(triggerRect.left, window.innerWidth - 240)
+    );
+
+    const finishToggle = () => {
+        if (shouldExpand) {
+            expandedMemorySets.add(groupId);
+        } else {
+            expandedMemorySets.delete(groupId);
+        }
+
+        animatingMemorySets.delete(groupId);
+        memorySetAnimationTimers.delete(groupId);
+
+        buildGallery(true);
 
 
-    if (target) {
-        const targetRect = target.getBoundingClientRect();
-        const previousScrollBehavior = galleryTrack.style.scrollBehavior;
+        const target = shouldExpand
+            ? Array.from(document.querySelectorAll("[data-memory-set]"))
+                .find(frame => frame.dataset.memorySet === groupId)
+            : Array.from(document.querySelectorAll("[data-expand-group]"))
+                .find(frame => frame.dataset.expandGroup === groupId);
 
-        galleryTrack.style.scrollBehavior = "auto";
-        galleryTrack.scrollLeft += targetRect.left - desiredLeft;
-        galleryTrack.style.scrollBehavior = previousScrollBehavior;
+
+        if (target) {
+            const targetRect = target.getBoundingClientRect();
+            const previousScrollBehavior = galleryTrack.style.scrollBehavior;
+
+            galleryTrack.style.scrollBehavior = "auto";
+            galleryTrack.scrollLeft += targetRect.left - desiredLeft;
+            galleryTrack.style.scrollBehavior = previousScrollBehavior;
+
+            if (restoreFocus) {
+                const focusTarget =
+                    target.querySelector(
+                        ".memory-open-control"
+                    ) || target;
+
+                focusTarget.focus({
+                    preventScroll: true
+                });
+            }
+
+            if (!shouldExpand) {
+                target.classList.add("is-returning");
+
+                window.setTimeout(() => {
+                    if (target.isConnected) {
+                        target.classList.remove(
+                            "is-returning"
+                        );
+                    }
+                }, 430);
+            }
+        }
+
+        requestAnimationFrame(updateTimeline);
+    };
+
+
+    if (prefersReducedMotion()) {
+        finishToggle();
+        return;
     }
 
 
-    requestAnimationFrame(updateTimeline);
+    animatingMemorySets.add(groupId);
+
+    if (shouldExpand) {
+        trigger.classList.add("is-expanding");
+    } else {
+        document
+            .querySelectorAll(
+                "[data-memory-set], [data-collapse-group]"
+            )
+            .forEach(element => {
+                if (
+                    element.dataset.memorySet === groupId ||
+                    element.dataset.collapseGroup === groupId
+                ) {
+                    element.classList.add("is-collapsing");
+                }
+            });
+    }
+
+
+    const timer = window.setTimeout(
+        finishToggle,
+        shouldExpand ? 120 : 170
+    );
+
+    memorySetAnimationTimers.set(
+        groupId,
+        timer
+    );
 }
 
 
@@ -1721,8 +2334,7 @@ galleryTrack.addEventListener(
     event => {
 
         if (
-            event.pointerType === "mouse"
-            &&
+            event.pointerType !== "mouse" ||
             event.button !== 0
         ) {
             return;
@@ -1740,6 +2352,13 @@ galleryTrack.addEventListener(
 
         isPointerDragging =
             true;
+
+        activePointerId =
+            event.pointerId;
+
+        galleryTrack.setPointerCapture(
+            event.pointerId
+        );
 
         pointerStartX =
             event.clientX;
@@ -1771,10 +2390,22 @@ galleryTrack.addEventListener(
 
 galleryTrack.addEventListener(
     "pointerup",
-    () => {
+    event => {
 
         isPointerDragging =
             false;
+
+        if (
+            galleryTrack.hasPointerCapture(
+                event.pointerId
+            )
+        ) {
+            galleryTrack.releasePointerCapture(
+                event.pointerId
+            );
+        }
+
+        activePointerId = null;
     }
 );
 
@@ -1785,6 +2416,21 @@ galleryTrack.addEventListener(
 
         isPointerDragging =
             false;
+        activePointerId = null;
+    }
+);
+
+
+galleryTrack.addEventListener(
+    "lostpointercapture",
+    event => {
+        if (
+            activePointerId === null ||
+            event.pointerId === activePointerId
+        ) {
+            isPointerDragging = false;
+            activePointerId = null;
+        }
     }
 );
 
@@ -1797,7 +2443,7 @@ function scrollToIntro() {
 
     galleryTrack.scrollTo({
         left: 0,
-        behavior: "smooth"
+        behavior: prefersReducedMotion() ? "auto" : "smooth"
     });
 }
 
@@ -1820,7 +2466,7 @@ function scrollToMonth(index) {
             section.offsetLeft,
 
         behavior:
-            "smooth"
+            prefersReducedMotion() ? "auto" : "smooth"
     });
 }
 
@@ -1913,7 +2559,7 @@ function moveSection(direction) {
                 .offsetLeft,
 
         behavior:
-            "smooth"
+            prefersReducedMotion() ? "auto" : "smooth"
 
     });
 }
@@ -1945,8 +2591,8 @@ function updateTimeline() {
         );
 
 
-    timelineProgress.style.width =
-        `${percent}%`;
+    timelineProgress.style.transform =
+        `scaleX(${Math.max(0, Math.min(1, progress))})`;
 
 
     progressNumber.textContent =
@@ -2051,7 +2697,7 @@ function updateTimeline() {
                         nextScrollLeft
                     )
                 ),
-                behavior: "smooth"
+                behavior: prefersReducedMotion() ? "auto" : "smooth"
             });
 
         }
@@ -2108,31 +2754,46 @@ homeButton.addEventListener(
 
 filmsButton.addEventListener(
     "click",
-    openOurFilms
+    () => {
+        filmsButton.focus({ preventScroll: true });
+        openOurFilms();
+    }
 );
 
 
 favoritesButton.addEventListener(
     "click",
-    openFavoritesModal
+    () => {
+        favoritesButton.focus({ preventScroll: true });
+        openFavoritesModal();
+    }
 );
 
 
 searchButton.addEventListener(
     "click",
-    openSearchModal
+    () => {
+        searchButton.focus({ preventScroll: true });
+        openSearchModal();
+    }
 );
 
 
 addMemoryButton.addEventListener(
     "click",
-    () => openUploadModal()
+    () => {
+        addMemoryButton.focus({ preventScroll: true });
+        openUploadModal();
+    }
 );
 
 
 endAddMemoryButton.addEventListener(
     "click",
-    () => openUploadModal()
+    () => {
+        endAddMemoryButton.focus({ preventScroll: true });
+        openUploadModal();
+    }
 );
 
 
@@ -2182,7 +2843,7 @@ function openViewerById(id) {
 }
 
 
-function renderViewer() {
+function renderViewer(direction = null) {
 
     const ordered =
         sortedMemories();
@@ -2259,11 +2920,13 @@ function renderViewer() {
         viewerMedia.innerHTML = `
 
             <img
+                class="media-reveal"
                 src="${memory.src}"
                 alt="${escapeHTML(
                     memory.caption ||
                     "Memory"
                 )}"
+                decoding="async"
             >
 
         `;
@@ -2277,11 +2940,12 @@ function renderViewer() {
         viewerMedia.innerHTML = `
 
             <video
+                class="media-reveal"
                 src="${memory.src}"
 
                 controls
-                autoplay
                 playsinline
+                preload="metadata"
             ></video>
 
         `;
@@ -2311,6 +2975,47 @@ function renderViewer() {
 
         `;
     }
+
+
+    revealReadyMedia(viewerMedia);
+    animateViewerChange(direction);
+}
+
+
+function animateViewerChange(direction) {
+
+    window.clearTimeout(viewerTransitionTimer);
+
+    viewerMain.classList.remove(
+        "is-changing-next",
+        "is-changing-previous"
+    );
+
+
+    if (
+        !direction ||
+        prefersReducedMotion()
+    ) {
+        return;
+    }
+
+
+    void viewerMain.offsetWidth;
+
+    viewerMain.classList.add(
+        direction === "previous"
+            ? "is-changing-previous"
+            : "is-changing-next"
+    );
+
+
+    viewerTransitionTimer =
+        window.setTimeout(() => {
+            viewerMain.classList.remove(
+                "is-changing-next",
+                "is-changing-previous"
+            );
+        }, 300);
 }
 
 
@@ -2322,6 +3027,7 @@ function renderViewerSetContext(memory) {
     if (position === -1 || members.length < 2) {
         viewerSetContext.hidden = true;
         viewerSetProgress.innerHTML = "";
+        viewerSetProgress.removeAttribute("data-group-id");
         return;
     }
 
@@ -2331,27 +3037,68 @@ function renderViewerSetContext(memory) {
 
     if (members.length <= 10) {
         viewerSetProgress.className = "viewer-set-progress dots";
-        viewerSetProgress.innerHTML = members.map((member, index) => `
-            <button
-                type="button"
-                class="viewer-set-dot ${index === position ? "current" : index < position ? "passed" : ""}"
-                data-set-memory-id="${member.id}"
-                aria-label="Open memory ${index + 1} of ${members.length}"
-                aria-current="${index === position ? "true" : "false"}"
-            ><span></span></button>
-        `).join("");
+        const canReuseDots =
+            viewerSetProgress.dataset.groupId === memory.groupId &&
+            viewerSetProgress.children.length === members.length;
+
+        if (!canReuseDots) {
+            viewerSetProgress.innerHTML = members.map((member, index) => `
+                <button
+                    type="button"
+                    class="viewer-set-dot"
+                    data-set-memory-id="${member.id}"
+                    aria-label="Open memory ${index + 1} of ${members.length}"
+                ><span></span></button>
+            `).join("");
+        }
+
+        viewerSetProgress.dataset.groupId = memory.groupId;
+
+        Array.from(viewerSetProgress.children)
+            .forEach((dot, index) => {
+                dot.classList.toggle(
+                    "current",
+                    index === position
+                );
+                dot.classList.toggle(
+                    "passed",
+                    index < position
+                );
+                dot.setAttribute(
+                    "aria-current",
+                    index === position
+                        ? "true"
+                        : "false"
+                );
+            });
     } else {
         const progress = members.length === 1
             ? 0
             : position / (members.length - 1);
 
         viewerSetProgress.className = "viewer-set-progress bar";
-        viewerSetProgress.innerHTML = `
-            <div class="viewer-set-track" aria-hidden="true">
-                <span style="width:${progress * 100}%"></span>
-                <i style="left:${progress * 100}%"></i>
-            </div>
-        `;
+        const canReuseBar =
+            viewerSetProgress.dataset.groupId === memory.groupId &&
+            viewerSetProgress.querySelector(".viewer-set-track");
+
+        if (!canReuseBar) {
+            viewerSetProgress.innerHTML = `
+                <div class="viewer-set-track" aria-hidden="true">
+                    <span></span>
+                    <i></i>
+                </div>
+            `;
+        }
+
+        viewerSetProgress.dataset.groupId = memory.groupId;
+
+        const track =
+            viewerSetProgress.querySelector(".viewer-set-track");
+
+        track.querySelector("span").style.transform =
+            `scaleX(${progress})`;
+        track.querySelector("i").style.left =
+            `${progress * 100}%`;
     }
 }
 
@@ -2363,7 +3110,9 @@ function renderViewerPrivateNote(memory) {
         : "";
 
     viewerNote.hidden = !note;
-    viewerNotePanel.hidden = true;
+    viewerNote.classList.remove("is-note-open");
+    viewerNotePanel.hidden = !note;
+    viewerNotePanel.setAttribute("aria-hidden", "true");
     viewerNoteToggle.hidden = !note;
     viewerNoteToggle.textContent = "READ NOTE";
     viewerNoteToggle.setAttribute("aria-expanded", "false");
@@ -2384,15 +3133,27 @@ viewerSetProgress.addEventListener("click", event => {
     );
 
     if (index !== -1) {
+        const direction =
+            index < currentViewerIndex
+                ? "previous"
+                : "next";
+
         currentViewerIndex = index;
-        renderViewer();
+        renderViewer(direction);
     }
 });
 
 
 viewerNoteToggle.addEventListener("click", () => {
     viewerNoteExpanded = !viewerNoteExpanded;
-    viewerNotePanel.hidden = !viewerNoteExpanded;
+    viewerNote.classList.toggle(
+        "is-note-open",
+        viewerNoteExpanded
+    );
+    viewerNotePanel.setAttribute(
+        "aria-hidden",
+        String(!viewerNoteExpanded)
+    );
     viewerNoteToggle.textContent = viewerNoteExpanded
         ? "HIDE NOTE"
         : "READ NOTE";
@@ -2415,7 +3176,7 @@ function showNextViewerMemory() {
         ) % ordered.length;
 
 
-    renderViewer();
+    renderViewer("next");
 }
 
 
@@ -2433,7 +3194,7 @@ function showPreviousViewerMemory() {
         ) % ordered.length;
 
 
-    renderViewer();
+    renderViewer("previous");
 }
 
 
@@ -2461,8 +3222,6 @@ viewerFavoriteButton.addEventListener(
         if (id) {
 
             toggleFavorite(id);
-
-            updateViewerFavoriteButton();
         }
 
     }
@@ -2491,6 +3250,12 @@ function updateViewerFavoriteButton() {
         favorite
             ? "♥"
             : "♡";
+    viewerFavoriteButton.setAttribute(
+        "aria-label",
+        favorite
+            ? "Remove from favorites"
+            : "Add to favorites"
+    );
 }
 
 
@@ -2580,7 +3345,7 @@ function updateOurFilmsMonthNav(keepActiveVisible = false) {
         activeButton.scrollIntoView({
             block: "nearest",
             inline: "center",
-            behavior: "smooth"
+            behavior: prefersReducedMotion() ? "auto" : "smooth"
         });
     }
 }
@@ -2588,22 +3353,17 @@ function updateOurFilmsMonthNav(keepActiveVisible = false) {
 
 function pauseGalleryVideoPreviews() {
 
-    if (videoObserver) {
-        videoObserver.disconnect();
-    }
+    observedGalleryVideos.forEach(video => {
+        pausePreviewVideo(video);
+    });
 
-
-    document
-        .querySelectorAll(".preview-video")
-        .forEach(pausePreviewVideo);
+    activeGalleryPreviewVideo = null;
 }
 
 
 function resumeGalleryVideoPreviews() {
 
-    if (!document.querySelector(".modal.open")) {
-        setupVideoAutoplay();
-    }
+    syncGalleryVideoPlayback();
 }
 
 
@@ -2639,8 +3399,10 @@ function createOurFilmsMedia(memory) {
         return `
 
             <img
+                class="media-reveal"
                 src="${escapeHTML(memory.src)}"
                 alt="${escapeHTML(memory.caption || "Memory")}"
+                decoding="async"
                 draggable="false"
             >
 
@@ -2653,6 +3415,7 @@ function createOurFilmsMedia(memory) {
         return `
 
             <video
+                class="media-reveal"
                 src="${escapeHTML(memory.src)}"
                 controls
                 playsinline
@@ -2675,7 +3438,10 @@ function createOurFilmsMedia(memory) {
 }
 
 
-function renderOurFilms(animate = true) {
+function renderOurFilms(
+    animate = true,
+    animateCopy = false
+) {
 
     clearOurFilmsTimer();
 
@@ -2719,8 +3485,25 @@ function renderOurFilms(animate = true) {
 
     ourFilmsStage.classList.remove("is-changing");
 
+    ourFilmsDialog.classList.remove(
+        "is-switching"
+    );
+
+
+    if (animate && animateCopy) {
+        void ourFilmsDialog.offsetWidth;
+        ourFilmsDialog.classList.add(
+            "is-switching"
+        );
+    }
+
 
     if (!hasMemories) {
+        if (animate) {
+            void ourFilmsStage.offsetWidth;
+            ourFilmsStage.classList.add("is-changing");
+        }
+
         updateOurFilmsMonthNav();
         scheduleOurFilmsAdvance();
         return;
@@ -2748,6 +3531,8 @@ function renderOurFilms(animate = true) {
 
     ourFilmsMedia.innerHTML =
         createOurFilmsMedia(memory);
+
+    revealReadyMedia(ourFilmsMedia);
 
 
     if (memory.type === "video") {
@@ -2916,6 +3701,12 @@ function scheduleOurFilmsAdvance() {
 
 function openOurFilms() {
 
+    window.clearTimeout(
+        ourFilmsCloseCleanupTimer
+    );
+
+    ourFilmsCloseCleanupTimer = null;
+
     stopOurFilmsPlayback();
 
     pauseOurFilmsVideo();
@@ -2944,11 +3735,21 @@ function closeOurFilms() {
 
     pauseOurFilmsVideo();
 
-    ourFilmsMedia.innerHTML = "";
-
     ourFilmsStage.classList.remove("is-changing");
 
     closeModal(ourFilmsModal);
+
+    window.clearTimeout(
+        ourFilmsCloseCleanupTimer
+    );
+
+    ourFilmsCloseCleanupTimer = window.setTimeout(() => {
+        ourFilmsCloseCleanupTimer = null;
+
+        if (!ourFilmsModal.classList.contains("open")) {
+            ourFilmsMedia.innerHTML = "";
+        }
+    }, prefersReducedMotion() ? 0 : 280);
 
     updateTimeline();
 
@@ -3012,7 +3813,7 @@ function setOurFilmsMonth(monthIndex) {
 
     ourFilmsSlideIndex = 0;
 
-    renderOurFilms();
+    renderOurFilms(true, true);
 
     updateOurFilmsMonthNav(true);
 }
@@ -3429,6 +4230,8 @@ function openDeleteMemoryModal(id) {
     deleteMemoryPreview.innerHTML =
         createSmallPreview(memory, false);
 
+    revealReadyMedia(deleteMemoryPreview);
+
     deleteMemoryCaption.textContent =
         memory.caption || "Untitled memory";
 
@@ -3665,8 +4468,8 @@ function renderUploadPreview() {
                 >
                     <div class="selected-memory-media">
                         ${item.file.type.startsWith("image/")
-                            ? `<img src="${item.previewUrl}" alt="">`
-                            : `<video src="${item.previewUrl}" muted playsinline preload="metadata"></video>`}
+                            ? `<img class="media-reveal" src="${item.previewUrl}" alt="">`
+                            : `<video class="media-reveal" src="${item.previewUrl}" muted playsinline preload="metadata"></video>`}
                         <span class="selected-memory-order">${index + 1}</span>
                         <span class="selected-memory-type">${item.file.type === "image/gif" ? "GIF" : item.file.type.startsWith("video/") ? "VIDEO" : "PHOTO"}</span>
                     </div>
@@ -3683,6 +4486,99 @@ function renderUploadPreview() {
     `;
 
     updateDevelopButton();
+    revealReadyMedia(uploadPreview);
+}
+
+
+function getUploadCardPositions() {
+
+    return new Map(
+        Array.from(
+            uploadPreview.querySelectorAll("[data-upload-id]")
+        ).map(card => [
+            card.dataset.uploadId,
+            card.getBoundingClientRect()
+        ])
+    );
+}
+
+
+function animateUploadReorder(previousPositions) {
+
+    if (
+        prefersReducedMotion() ||
+        typeof Element.prototype.animate !== "function"
+    ) {
+        return;
+    }
+
+
+    uploadPreview
+        .querySelectorAll("[data-upload-id]")
+        .forEach(card => {
+            const previous =
+                previousPositions.get(
+                    card.dataset.uploadId
+                );
+
+            if (!previous) {
+                return;
+            }
+
+            const current =
+                card.getBoundingClientRect();
+
+            const deltaX =
+                previous.left - current.left;
+
+            const deltaY =
+                previous.top - current.top;
+
+
+            if (!deltaX && !deltaY) {
+                return;
+            }
+
+
+            card.animate(
+                [
+                    {
+                        transform:
+                            `translate(${deltaX}px, ${deltaY}px)`
+                    },
+                    {
+                        transform:
+                            "translate(0, 0)"
+                    }
+                ],
+                {
+                    duration: 260,
+                    easing:
+                        "cubic-bezier(0.22, 1, 0.36, 1)"
+                }
+            );
+        });
+}
+
+
+function clearUploadDragState() {
+
+    draggedUploadItemId = null;
+
+    dropZone.classList.remove(
+        "drag-over"
+    );
+
+    uploadPreview
+        .querySelectorAll(
+            ".is-dragging, .is-drop-target"
+        )
+        .forEach(card => {
+            card.classList.remove(
+                "is-dragging",
+                "is-drop-target"
+            );
+        });
 }
 
 
@@ -3741,6 +4637,12 @@ function addSelectedFiles(files) {
 
 function openUploadModal(monthIndex = null) {
 
+    window.clearTimeout(
+        uploadCloseCleanupTimer
+    );
+
+    uploadCloseCleanupTimer = null;
+
     resetUploadState();
     uploadForm.reset();
     resetUploadPreview();
@@ -3761,10 +4663,21 @@ function closeUploadModal() {
         return;
     }
 
-    resetUploadState();
-    uploadForm.reset();
-    resetUploadPreview();
     closeModal(uploadModal);
+
+    window.clearTimeout(
+        uploadCloseCleanupTimer
+    );
+
+    uploadCloseCleanupTimer = window.setTimeout(() => {
+        uploadCloseCleanupTimer = null;
+
+        if (!uploadModal.classList.contains("open")) {
+            resetUploadState();
+            uploadForm.reset();
+            resetUploadPreview();
+        }
+    }, prefersReducedMotion() ? 0 : 280);
 }
 
 
@@ -3826,6 +4739,9 @@ uploadPreview.addEventListener("click", event => {
         return;
     }
 
+    const previousPositions =
+        getUploadCardPositions();
+
     if (event.target.closest("[data-remove]")) {
         revokeUploadItem(selectedUploadFiles[index]);
         selectedUploadFiles.splice(index, 1);
@@ -3849,6 +4765,7 @@ uploadPreview.addEventListener("click", event => {
     }
 
     renderUploadPreview();
+    animateUploadReorder(previousPositions);
 });
 
 
@@ -3862,6 +4779,7 @@ uploadPreview.addEventListener("dragstart", event => {
     draggedUploadItemId = card?.dataset.uploadId || null;
 
     if (draggedUploadItemId) {
+        card.classList.add("is-dragging");
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", draggedUploadItemId);
     }
@@ -3869,15 +4787,35 @@ uploadPreview.addEventListener("dragstart", event => {
 
 
 uploadPreview.addEventListener("dragover", event => {
-    if (event.target.closest("[data-upload-id]") && draggedUploadItemId) {
+    const target =
+        event.target.closest("[data-upload-id]");
+
+    if (target && draggedUploadItemId) {
         event.preventDefault();
+        event.stopPropagation();
         event.dataTransfer.dropEffect = "move";
+
+        uploadPreview
+            .querySelectorAll(".is-drop-target")
+            .forEach(card => {
+                card.classList.toggle(
+                    "is-drop-target",
+                    card === target
+                );
+            });
+
+        target.classList.add("is-drop-target");
     }
 });
 
 
 uploadPreview.addEventListener("drop", event => {
     const target = event.target.closest("[data-upload-id]");
+
+    if (draggedUploadItemId) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
 
     if (!target || !draggedUploadItemId || uploadSharedDate !== null) {
         return;
@@ -3892,31 +4830,69 @@ uploadPreview.addEventListener("drop", event => {
         item => item.id === target.dataset.uploadId
     );
 
+    const previousPositions =
+        getUploadCardPositions();
+
     if (from !== -1 && to !== -1 && from !== to) {
         const [item] = selectedUploadFiles.splice(from, 1);
         selectedUploadFiles.splice(to, 0, item);
         renderUploadPreview();
+        animateUploadReorder(previousPositions);
     }
 
-    draggedUploadItemId = null;
+    clearUploadDragState();
 });
+
+
+uploadPreview.addEventListener(
+    "dragend",
+    clearUploadDragState
+);
 
 
 function renderUploadProgress(current = 0, total = 0) {
 
+    const progress = total
+        ? Math.max(0, Math.min(1, current / total))
+        : 0;
+
     uploadProgress.hidden = false;
-    uploadProgress.innerHTML = `
-        <strong>DEVELOPING MEMORIES</strong>
-        <span>${current} of ${total}</span>
-        <ul>
-            ${selectedUploadFiles.map(item => `
+
+    if (
+        !uploadProgress.querySelector(
+            ".upload-progress-track"
+        )
+    ) {
+        uploadProgress.innerHTML = `
+            <strong>DEVELOPING MEMORIES</strong>
+            <span class="upload-progress-count"></span>
+            <div class="upload-progress-track" aria-hidden="true">
+                <span></span>
+            </div>
+            <ul></ul>
+        `;
+    }
+
+
+    uploadProgress
+        .querySelector(".upload-progress-count")
+        .textContent =
+            `${String(current).padStart(2, "0")} / ${String(total).padStart(2, "0")}`;
+
+    uploadProgress
+        .querySelector(".upload-progress-track > span")
+        .style.transform =
+            `scaleX(${progress})`;
+
+    uploadProgress
+        .querySelector("ul")
+        .innerHTML =
+            selectedUploadFiles.map(item => `
                 <li class="${item.status}">
                     <span>${item.status === "success" ? "✓" : item.status === "uploading" ? "↑" : item.status === "failed" ? "!" : "○"}</span>
                     <span>${escapeHTML(item.file.name)}</span>
                 </li>
-            `).join("")}
-        </ul>
-    `;
+            `).join("");
 }
 
 
@@ -4085,7 +5061,7 @@ closeUploadButton.addEventListener("click", closeUploadModal);
 
 function createSmallPreview(
     memory,
-    autoplayVideo = true
+    hoverPreview = false
 ) {
 
     if (
@@ -4096,8 +5072,11 @@ function createSmallPreview(
         return `
 
             <img
+                class="media-reveal"
                 src="${memory.src}"
                 alt=""
+                loading="lazy"
+                decoding="async"
             >
 
         `;
@@ -4111,9 +5090,10 @@ function createSmallPreview(
         return `
 
             <video
+                class="media-reveal ${hoverPreview ? "hover-preview-video" : ""}"
                 src="${memory.src}"
                 muted
-                ${autoplayVideo ? "autoplay loop" : ""}
+                loop
                 playsinline
                 preload="metadata"
             ></video>
@@ -4149,8 +5129,13 @@ function openSearchModal() {
 
 
     setTimeout(
-        () =>
-            searchInput.focus(),
+        () => {
+            if (
+                searchModal.classList.contains("open")
+            ) {
+                searchInput.focus();
+            }
+        },
 
         50
     );
@@ -4158,6 +5143,10 @@ function openSearchModal() {
 
 
 function renderSearchResults(items) {
+
+    pauseHoverPreviewVideos(
+        searchResults
+    );
 
     const results = [];
     const handledGroups = new Set();
@@ -4192,7 +5181,8 @@ function renderSearchResults(items) {
         searchResults.innerHTML = `
 
             <div class="no-results">
-                No memories found.
+                <strong>NO EXPOSURES FOUND</strong>
+                <span>Try another caption or date.</span>
             </div>
 
         `;
@@ -4207,7 +5197,7 @@ function renderSearchResults(items) {
             .map(({ memory, setSize }) => `
 
                 <button
-                    class="search-result"
+                    class="search-result ${setSize > 1 ? "search-memory-set" : ""}"
 
                     data-search-id="${memory.id}"
                 >
@@ -4215,7 +5205,8 @@ function renderSearchResults(items) {
                     <div class="search-result-preview">
 
                         ${createSmallPreview(
-                            memory
+                            memory,
+                            true
                         )}
 
                         ${setSize > 1
@@ -4261,6 +5252,9 @@ function renderSearchResults(items) {
             .join("");
 
 
+    revealReadyMedia(searchResults);
+
+
     document
         .querySelectorAll(
             "[data-search-id]"
@@ -4274,11 +5268,6 @@ function renderSearchResults(items) {
                     const id =
                         button.dataset
                             .searchId;
-
-
-                    closeModal(
-                        searchModal
-                    );
 
 
                     openViewerById(
@@ -4423,6 +5412,9 @@ function renderFavorites() {
             .join("");
 
 
+    revealReadyMedia(favoritesGrid);
+
+
     document
         .querySelectorAll(
             "[data-favorite-card]"
@@ -4432,11 +5424,6 @@ function renderFavorites() {
             card.addEventListener(
                 "click",
                 () => {
-
-                    closeModal(
-                        favoritesModal
-                    );
-
 
                     openViewerById(
                         card.dataset
@@ -4476,6 +5463,14 @@ function updateFavoriteButtons() {
                     ? "♥"
                     : "♡";
 
+
+            button.setAttribute(
+                "aria-label",
+                favorite
+                    ? "Remove from favorites"
+                    : "Add to favorites"
+            );
+
         });
 
 
@@ -4513,53 +5508,185 @@ closeFavoritesButton.addEventListener(
 
 function openModal(modal) {
 
-    closeAllModals();
+    const currentModal =
+        document.querySelector(".modal.open");
+
+    const returnTarget = currentModal
+        ? modalReturnFocus.get(currentModal)
+        : document.activeElement;
+
+    pauseGalleryVideoPreviews();
+    pauseHoverPreviewVideos();
+
+    closeAllModals(false);
+
+    if (
+        returnTarget instanceof HTMLElement &&
+        !returnTarget.closest(".modal")
+    ) {
+        modalReturnFocus.set(
+            modal,
+            returnTarget
+        );
+    }
 
 
     modal.classList.add(
         "open"
     );
 
+    modal.inert = false;
+
 
     modal.setAttribute(
         "aria-hidden",
         "false"
     );
+
+
+    requestAnimationFrame(() => {
+        if (!modal.classList.contains("open")) {
+            return;
+        }
+
+        const focusTarget =
+            modal.querySelector(
+                "[autofocus], input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex='-1'])"
+            );
+
+        focusTarget?.focus({
+            preventScroll: true
+        });
+    });
 }
 
 
-function closeModal(modal) {
+function resolveModalReturnTarget(returnTarget) {
+
+    if (returnTarget?.isConnected) {
+        return returnTarget;
+    }
+
+
+    const memoryHost =
+        returnTarget?.closest?.(
+            "[data-memory-id]"
+        );
+
+    const memoryId =
+        memoryHost?.dataset.memoryId;
+
+
+    if (memoryId) {
+        const replacement = Array.from(
+            document.querySelectorAll(
+                "[data-memory-id]"
+            )
+        ).find(element =>
+            element.dataset.memoryId === memoryId
+        );
+
+        if (replacement) {
+            return replacement.querySelector(
+                ".memory-open-control"
+            ) || replacement;
+        }
+    }
+
+
+    return brandButton;
+}
+
+
+function closeModal(modal, restoreFocus = true) {
+
+    const activeElement =
+        document.activeElement;
+
+    const returnTarget = restoreFocus
+        ? resolveModalReturnTarget(
+            modalReturnFocus.get(modal)
+        )
+        : null;
+
+    const hasOtherOpenModal = Array.from(
+        document.querySelectorAll(
+            ".modal.open"
+        )
+    ).some(openModalElement =>
+        openModalElement !== modal
+    );
+
+
+    if (
+        restoreFocus &&
+        !hasOtherOpenModal &&
+        returnTarget?.isConnected
+    ) {
+        returnTarget.focus({
+            preventScroll: true
+        });
+    } else if (
+        activeElement instanceof HTMLElement &&
+        modal.contains(activeElement)
+    ) {
+        activeElement.blur();
+    }
+
+    pauseHoverPreviewVideos(
+        modal
+    );
 
     modal
         .querySelectorAll(
-            "video"
+            "video:not(.hover-preview-video)"
         )
-        .forEach(
-            video =>
-                video.pause()
-        );
+        .forEach(video => {
+            video.pause();
+        });
 
 
     modal.classList.remove(
         "open"
     );
 
+    modal.inert = true;
+
 
     modal.setAttribute(
         "aria-hidden",
         "true"
     );
+
+
+    if (restoreFocus) {
+        requestAnimationFrame(() => {
+            if (
+                !document.querySelector(".modal.open") &&
+                returnTarget?.isConnected
+            ) {
+                returnTarget.focus({
+                    preventScroll: true
+                });
+            }
+        });
+    }
+
+
+    requestAnimationFrame(
+        resumeGalleryVideoPreviews
+    );
 }
 
 
-function closeAllModals() {
+function closeAllModals(restoreFocus = true) {
 
     document
         .querySelectorAll(
             ".modal.open"
         )
         .forEach(
-            closeModal
+            modal => closeModal(modal, restoreFocus)
         );
 }
 
@@ -4637,13 +5764,52 @@ document.addEventListener(
     "keydown",
     event => {
 
+        if (event.key === "Tab") {
+            const openModalElement =
+                document.querySelector(".modal.open");
+
+            if (openModalElement) {
+                const focusable = Array.from(
+                    openModalElement.querySelectorAll(
+                        "button:not([disabled]):not([hidden]), input:not([disabled]):not([hidden]), textarea:not([disabled]):not([hidden]), video[controls], a[href], [tabindex]:not([tabindex='-1']):not([hidden])"
+                    )
+                ).filter(element =>
+                    element.getClientRects().length > 0
+                );
+
+                if (focusable.length) {
+                    const first = focusable[0];
+                    const last =
+                        focusable[
+                            focusable.length - 1
+                        ];
+
+                    if (
+                        event.shiftKey &&
+                        document.activeElement === first
+                    ) {
+                        event.preventDefault();
+                        last.focus();
+                    } else if (
+                        !event.shiftKey &&
+                        document.activeElement === last
+                    ) {
+                        event.preventDefault();
+                        first.focus();
+                    }
+                }
+            }
+        }
+
         const target = event.target;
 
-        const isEditingField =
+        const isInteractiveTarget =
             target instanceof Element &&
             (
                 target.isContentEditable ||
-                target.closest("input, textarea, select")
+                target.closest(
+                    "input, textarea, select, video, audio"
+                )
             );
 
 
@@ -4658,13 +5824,13 @@ document.addEventListener(
             }
 
 
-            if (!isEditingField && event.key === "ArrowRight") {
+            if (!isInteractiveTarget && event.key === "ArrowRight") {
                 event.preventDefault();
                 showNextOurFilmsMemory();
             }
 
 
-            if (!isEditingField && event.key === "ArrowLeft") {
+            if (!isInteractiveTarget && event.key === "ArrowLeft") {
                 event.preventDefault();
                 showPreviousOurFilmsMemory();
             }
@@ -4718,7 +5884,7 @@ document.addEventListener(
             if (
                 viewerModal.classList
                     .contains("open") &&
-                !isEditingField
+                !isInteractiveTarget
             ) {
 
                 if (
@@ -4745,6 +5911,7 @@ document.addEventListener(
 
 
         if (
+            !isInteractiveTarget &&
             event.key ===
             "ArrowRight"
         ) {
@@ -4754,6 +5921,7 @@ document.addEventListener(
 
 
         if (
+            !isInteractiveTarget &&
             event.key ===
             "ArrowLeft"
         ) {
@@ -4771,9 +5939,24 @@ document.addEventListener(
 
 async function initializeGallery() {
 
+    document.body.classList.add(
+        "page-entering"
+    );
+
     buildTimeline();
 
     buildOurFilmsMonthNav();
+
+    showGalleryLoadingState();
+
+
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            document.body.classList.add(
+                "is-ready"
+            );
+        });
+    });
 
 
     memoryDate.value =
@@ -4785,6 +5968,21 @@ async function initializeGallery() {
     await loadMemories();
 
 }
+
+
+document.addEventListener(
+    "visibilitychange",
+    () => {
+        if (document.hidden) {
+            pauseGalleryVideoPreviews();
+            pauseHoverPreviewVideos();
+            return;
+        }
+
+
+        resumeGalleryVideoPreviews();
+    }
+);
 
 
 window.addEventListener(

@@ -307,11 +307,17 @@
         ></div>
 
 
-        <div class="viewer">
+        <div
+            class="viewer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Memory viewer"
+        >
 
             <button
                 class="modal-close"
                 id="closeViewerButton"
+                aria-label="Close memory viewer"
             >
                 ×
             </button>
@@ -320,6 +326,7 @@
             <button
                 class="viewer-arrow viewer-previous"
                 id="viewerPrevious"
+                aria-label="Previous memory"
             >
                 ←
             </button>
@@ -440,6 +447,7 @@
             <button
                 class="viewer-arrow viewer-next"
                 id="viewerNext"
+                aria-label="Next memory"
             >
                 →
             </button>
@@ -806,11 +814,17 @@
         ></div>
 
 
-        <div class="upload-dialog">
+        <div
+            class="upload-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="uploadTitle"
+        >
 
             <button
                 class="modal-close"
                 id="closeUploadButton"
+                aria-label="Close Add Memory"
             >
                 ×
             </button>
@@ -822,7 +836,7 @@
                     NEW EXPOSURE
                 </p>
 
-                <h2>
+                <h2 id="uploadTitle">
                     Add to our film.
                 </h2>
 
@@ -981,11 +995,17 @@
         ></div>
 
 
-        <div class="search-dialog">
+        <div
+            class="search-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="searchTitle"
+        >
 
             <button
                 class="modal-close"
                 id="closeSearchButton"
+                aria-label="Close search"
             >
                 ×
             </button>
@@ -995,7 +1015,7 @@
                 SEARCH ARCHIVE
             </p>
 
-            <h2>
+            <h2 id="searchTitle">
                 Find a memory.
             </h2>
 
@@ -1007,6 +1027,7 @@
                 <input
                     type="search"
                     id="searchInput"
+                    aria-label="Search memories by caption, month, or date"
                     placeholder="Caption, month or date..."
                     autocomplete="off"
                 >
@@ -1038,11 +1059,17 @@
         ></div>
 
 
-        <div class="favorites-dialog">
+        <div
+            class="favorites-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="favoritesTitle"
+        >
 
             <button
                 class="modal-close"
                 id="closeFavoritesButton"
+                aria-label="Close favorites"
             >
                 ×
             </button>
@@ -1052,7 +1079,7 @@
                 FAVORITE EXPOSURES
             </p>
 
-            <h2>
+            <h2 id="favoritesTitle">
                 The ones we love most.
             </h2>
 
@@ -1070,6 +1097,9 @@
     <div
         class="toast"
         id="toast"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
     ></div>
 
 
