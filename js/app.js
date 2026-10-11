@@ -16,6 +16,12 @@ const loginSubmitButton = document.getElementById("loginSubmitButton");
 const togglePasswordButton = document.getElementById("togglePasswordButton");
 const logoutButton = document.getElementById("logoutButton");
 const accountIndicator = document.getElementById("accountIndicator");
+const mobileMenuToggle = document.getElementById("mobileMenuToggle");
+const mobileNavBackdrop = document.getElementById("mobileNavBackdrop");
+const mobileNavDrawer = document.getElementById("mobileNavDrawer");
+const mobileNavClose = document.getElementById("mobileNavClose");
+const mobileAccountName = document.getElementById("mobileAccountName");
+const mobileLogoutButton = document.getElementById("mobileLogoutButton");
 const viewerAttribution = document.getElementById("viewerAttribution");
 const viewerUploadedBy = document.getElementById("viewerUploadedBy");
 const viewerEditedBy = document.getElementById("viewerEditedBy");
@@ -27,6 +33,37 @@ let authGeneration = 0;
 let galleryInitializationPromise = null;
 let memoriesRequestVersion = 0;
 let currentUser = null;
+
+function syncMobileNavigationState() {
+    document.querySelectorAll(".mobile-nav-link").forEach(link => {
+        const target = document.getElementById(link.dataset.navTarget);
+        const isActive = Boolean(target?.classList.contains("active"));
+        link.classList.toggle("active", isActive);
+        if (isActive) link.setAttribute("aria-current", "page");
+        else link.removeAttribute("aria-current");
+    });
+}
+
+function setMobileMenuOpen(isOpen, restoreFocus = true) {
+    const shouldOpen = Boolean(isOpen && isAuthenticated);
+    mobileMenuToggle.setAttribute("aria-expanded", String(shouldOpen));
+    mobileMenuToggle.setAttribute("aria-label", shouldOpen ? "Close navigation menu" : "Open navigation menu");
+    mobileNavDrawer.classList.toggle("open", shouldOpen);
+    mobileNavDrawer.setAttribute("aria-hidden", String(!shouldOpen));
+    mobileNavBackdrop.hidden = !shouldOpen;
+    document.body.classList.toggle("mobile-nav-open", shouldOpen);
+
+    if (shouldOpen) {
+        syncMobileNavigationState();
+        requestAnimationFrame(() => mobileNavDrawer.querySelector(".mobile-nav-link")?.focus({ preventScroll: true }));
+    } else if (restoreFocus) {
+        requestAnimationFrame(() => mobileMenuToggle.focus({ preventScroll: true }));
+    }
+}
+
+function closeMobileMenu(restoreFocus = true) {
+    setMobileMenuOpen(false, restoreFocus);
+}
 
 async function apiFetch(input, options = {}) {
     const requestGeneration = authGeneration;
@@ -777,6 +814,7 @@ function openLetters() {
     pauseGalleryVideoPreviews();
     document.querySelectorAll(".nav-link").forEach(link => link.classList.remove("active"));
     lettersButton.classList.add("active");
+    syncMobileNavigationState();
     lettersSearchInput.value = "";
     openModal(lettersModal);
     loadLetters();
@@ -3821,6 +3859,8 @@ function updateTimeline() {
         "active",
         activeMonth >= 0
     );
+
+    syncMobileNavigationState();
 }
 
 
@@ -3837,6 +3877,23 @@ galleryTrack.addEventListener(
    NAV BUTTON EVENTS
    ========================================================= */
 
+mobileMenuToggle.addEventListener("click", () => {
+    setMobileMenuOpen(!mobileNavDrawer.classList.contains("open"));
+});
+mobileNavClose.addEventListener("click", () => closeMobileMenu());
+mobileNavBackdrop.addEventListener("click", () => closeMobileMenu());
+mobileLogoutButton.addEventListener("click", () => {
+    closeMobileMenu(false);
+    logout();
+});
+document.querySelectorAll(".mobile-nav-link").forEach(link => {
+    link.addEventListener("click", () => {
+        const target = document.getElementById(link.dataset.navTarget);
+        closeMobileMenu(false);
+        target?.click();
+    });
+});
+
 startRollButton.addEventListener(
     "click",
     () => scrollToMonth(START_MONTH)
@@ -3851,7 +3908,10 @@ brandButton.addEventListener(
 
 homeButton.addEventListener(
     "click",
-    scrollToIntro
+    () => {
+        scrollToIntro();
+        syncMobileNavigationState();
+    }
 );
 
 
@@ -4980,6 +5040,8 @@ function openOurFilms() {
     filmsButton.classList.add("active");
 
     homeButton.classList.remove("active");
+
+    syncMobileNavigationState();
 
     updateOurFilmsMonthNav(true);
 }
@@ -6606,6 +6668,9 @@ closeSearchButton.addEventListener(
    ========================================================= */
 
 function openFavoritesModal() {
+    document.querySelectorAll(".nav-link").forEach(link => link.classList.remove("active"));
+    favoritesButton.classList.add("active");
+    syncMobileNavigationState();
     openModal(
         favoritesModal
     );
@@ -7048,6 +7113,34 @@ document.addEventListener(
     "keydown",
     event => {
 
+        if (mobileNavDrawer.classList.contains("open")) {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                closeMobileMenu();
+                return;
+            }
+
+            if (event.key === "Tab") {
+                const focusable = Array.from(
+                    mobileNavDrawer.querySelectorAll(
+                        "button:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])"
+                    )
+                ).filter(element => element.getClientRects().length > 0);
+
+                if (focusable.length) {
+                    const first = focusable[0];
+                    const last = focusable[focusable.length - 1];
+                    if (event.shiftKey && document.activeElement === first) {
+                        event.preventDefault();
+                        last.focus();
+                    } else if (!event.shiftKey && document.activeElement === last) {
+                        event.preventDefault();
+                        first.focus();
+                    }
+                }
+            }
+        }
+
         if (event.key === "Tab") {
             const openModalElement =
                 document.querySelector(".modal.open");
@@ -7236,6 +7329,8 @@ function showLogin(message = "") {
     isAuthenticated = false;
     currentUser = null;
     accountIndicator.textContent = "";
+    mobileAccountName.textContent = "";
+    closeMobileMenu(false);
     galleryInitialized = false;
     galleryInitializationPromise = null;
     document.body.classList.add("auth-locked");
@@ -7258,6 +7353,8 @@ function showGallery() {
     accountIndicator.textContent = currentUser?.displayName
         ? `SIGNED IN AS ${currentUser.displayName.toUpperCase()}`
         : "";
+    mobileAccountName.textContent = currentUser?.displayName || currentUser?.username || "";
+    syncMobileNavigationState();
 }
 
 function clearPrivateState() {
@@ -7443,6 +7540,7 @@ let lastMobileGalleryLayout = isMobileGallery();
 
 window.addEventListener("resize", () => {
     const mobile = isMobileGallery();
+    if (!mobile) closeMobileMenu(false);
     if (mobile !== lastMobileGalleryLayout) {
         lastMobileGalleryLayout = mobile;
         galleryVideoObserver?.disconnect();
