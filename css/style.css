@@ -5466,10 +5466,10 @@ button:active {
 .letter-form-error { min-height: 20px; margin-top: 12px; color: var(--pink-light); font: 11px monospace; }
 .letter-editor-actions, .letter-reader-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 18px; }
 .letter-reader-dialog { width: min(760px, 94vw); padding: 26px; background: transparent; border: 0; }
-.letter-paper { padding: clamp(28px, 6vw, 72px); color: #332422; background: #f5e6c9; box-shadow: 0 24px 80px rgba(0,0,0,.36); }
-.letter-paper h2 { margin-top: 12px; color: #3e2927; font: 400 clamp(30px, 5vw, 52px) Georgia, serif; }
+.letter-paper { --letter-writing-font: Georgia, "Times New Roman", serif; --letter-ink-color: #3e2927; padding: clamp(28px, 6vw, 72px); color: var(--letter-ink-color); background: #f5e6c9; box-shadow: 0 24px 80px rgba(0,0,0,.36); }
+.letter-paper h2 { margin-top: 12px; color: var(--letter-ink-color); font-family: var(--letter-writing-font); font-size: clamp(30px, 5vw, 52px); font-weight: 400; }
 .letter-reader-meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 18px; padding-bottom: 18px; border-bottom: 1px solid rgba(75,46,39,.22); color: #795952; font: 10px monospace; letter-spacing: .8px; text-transform: uppercase; }
-.letter-reader-message { margin-top: 32px; color: #3e2927; font: 18px/1.75 Georgia, serif; white-space: pre-wrap; overflow-wrap: anywhere; }
+.letter-reader-message { margin-top: 32px; color: var(--letter-ink-color); font-family: var(--letter-writing-font); font-size: 18px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
 .letter-paper .eyebrow { color: #a65d4e; }
 .letter-paper .memory-secondary-button { color: #60403a; border-color: rgba(75,46,39,.3); }
 .letter-paper .delete-confirm-button { color: #8f4358; border-color: rgba(143,67,88,.35); background: transparent; }
@@ -5509,17 +5509,17 @@ button:active {
 .paper-choice.is-selected, .paper-choice:hover, .letter-preview-button:hover { border-color: rgba(255, 155, 185, .4); background: rgba(255, 117, 159, .12); color: var(--cream); }
 .letter-preview-button { margin-left: auto; border-color: rgba(255, 190, 187, .25); color: var(--orange-light); }
 .letter-preview-button::before { content: "◉"; margin-right: 7px; color: var(--pink-light); }
-.letter-editor-dialog form { position: relative; margin-top: 18px; padding: clamp(28px, 5vw, 56px); color: #352729; background-color: #f3e2c9; background-image: radial-gradient(rgba(117, 76, 54, .07) .7px, transparent .8px), radial-gradient(rgba(255,255,255,.35) .8px, transparent 1px), repeating-linear-gradient(to bottom, transparent 0, transparent 35px, rgba(116, 137, 151, .2) 36px, transparent 37px); background-position: 0 0, 12px 8px, 0 17px; background-size: 17px 17px, 23px 23px, 100% 37px; box-shadow: 0 26px 45px rgba(0, 0, 0, .38), 0 5px 12px rgba(0, 0, 0, .2); animation: letter-paper-in 500ms var(--ease-out) both; }
+.letter-editor-dialog form { --letter-writing-font: Georgia, "Times New Roman", serif; --letter-ink-color: #352729; position: relative; margin-top: 18px; padding: clamp(28px, 5vw, 56px); color: var(--letter-ink-color); background-color: #f3e2c9; background-image: radial-gradient(rgba(117, 76, 54, .07) .7px, transparent .8px), radial-gradient(rgba(255,255,255,.35) .8px, transparent 1px), repeating-linear-gradient(to bottom, transparent 0, transparent 35px, rgba(116, 137, 151, .2) 36px, transparent 37px); background-position: 0 0, 12px 8px, 0 17px; background-size: 17px 17px, 23px 23px, 100% 37px; box-shadow: 0 26px 45px rgba(0, 0, 0, .38), 0 5px 12px rgba(0, 0, 0, .2); animation: letter-paper-in 500ms var(--ease-out) both; }
 .letter-editor-dialog form::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .24; background: linear-gradient(105deg, transparent 0 47%, rgba(130, 84, 61, .13) 50%, transparent 53%); }
 .letter-editor-dialog .form-grid { position: relative; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px 25px; }
 .letter-editor-dialog .form-grid .field:first-child { grid-column: span 2; }
 .letter-editor-dialog .field { position: relative; z-index: 1; }
 .letter-editor-dialog .field > span:first-child { display: block; margin-bottom: 3px; color: #9b6352; font: 9px monospace; letter-spacing: 1.2px; text-transform: uppercase; }
-.letter-editor-dialog .field input, .letter-editor-dialog .field textarea { width: 100%; border: 0; border-bottom: 1px solid rgba(86, 55, 45, .28); outline: 0; background: transparent; color: #352729; font: 18px/1.45 Georgia, serif; }
+.letter-editor-dialog .field input, .letter-editor-dialog .field textarea { width: 100%; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--letter-ink-color) 28%, transparent); outline: 0; background: transparent; color: var(--letter-ink-color); font-family: var(--letter-writing-font); font-size: 18px; line-height: 1.45; }
 .letter-editor-dialog .field input { min-height: 34px; padding: 2px 0 5px; }
-.letter-editor-dialog .field input[type="date"] { font-size: 15px; }
+.letter-editor-dialog .field input[type="date"] { min-width: 0; color: var(--letter-ink-color); color-scheme: light; font-family: Georgia, "Times New Roman", serif; font-size: 15px; }
 .letter-editor-dialog .field input:focus, .letter-editor-dialog .field textarea:focus { border-color: #a75855; box-shadow: 0 1px 0 #a75855; }
-.letter-editor-dialog .field input::placeholder, .letter-editor-dialog .field textarea::placeholder { color: rgba(74, 50, 44, .5); }
+.letter-editor-dialog .field input::placeholder, .letter-editor-dialog .field textarea::placeholder { color: color-mix(in srgb, var(--letter-ink-color) 52%, #f3e2c9); opacity: .72; }
 .letter-editor-dialog .form-grid + .field { margin-top: 29px; }
 .letter-editor-dialog .field textarea { display: block; min-height: 370px; height: 370px; padding: 0; overflow-y: hidden; resize: none; line-height: 37px; background: repeating-linear-gradient(to bottom, transparent 0, transparent 36px, rgba(116, 137, 151, .2) 36px, transparent 37px); }
 .letter-character-count { color: #967365; font: 10px monospace; text-align: right; }
@@ -5538,13 +5538,16 @@ button:active {
 .letter-save-retry:focus-visible, .letter-save-retry:hover { border-color: #8f4358; background: rgba(143, 67, 88, .08); outline: none; }
 .letter-paper { position: relative; overflow: hidden; background-color: #f3e2c9; background-image: radial-gradient(rgba(117, 76, 54, .08) .7px, transparent .8px), repeating-linear-gradient(to bottom, transparent 0, transparent 35px, rgba(116, 137, 151, .2) 36px, transparent 37px); background-size: 17px 17px, 100% 37px; }
 .letter-paper[data-paper-style="plain"] { background-image: radial-gradient(rgba(117, 76, 54, .08) .7px, transparent .8px); }
-.letter-paper[data-ink="navy"], .letter-editor-dialog form[data-ink="navy"] { color: #203960; }
-.letter-paper[data-ink="burgundy"], .letter-editor-dialog form[data-ink="burgundy"] { color: #721e2a; }
-.letter-paper[data-font="handwritten"], .letter-editor-dialog form[data-font="handwritten"] { font-family: "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive; }
-.letter-paper[data-font="handwritten"] .letter-reader-message, .letter-paper[data-font="handwritten"] h2 { font-family: "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive; }
-.letter-reader-message { color: inherit; }
-.letter-reader-closing { margin-top: 32px; white-space: pre-line; font: 18px/1.7 Georgia, serif; }
-.letter-reader-signature { margin-top: 5px; font: 25px/1.4 "Segoe Print", "Bradley Hand", cursive; }
+.letter-paper[data-font="handwritten"], .letter-editor-dialog form[data-font="handwritten"] { --letter-writing-font: "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive; }
+.letter-paper[data-ink="navy"], .letter-editor-dialog form[data-ink="navy"] { --letter-ink-color: #203960; }
+.letter-paper[data-ink="burgundy"], .letter-editor-dialog form[data-ink="burgundy"] { --letter-ink-color: #721e2a; }
+.letter-editor-dialog form[data-ink="black"] { --letter-ink-color: #352729; }
+.letter-paper[data-ink="black"] { --letter-ink-color: #3e2927; }
+.letter-paper h2 { color: var(--letter-ink-color); font-family: var(--letter-writing-font); }
+.letter-editor-dialog .field input, .letter-editor-dialog .field textarea { font-family: var(--letter-writing-font); color: var(--letter-ink-color); }
+.letter-reader-message { color: var(--letter-ink-color); font-family: var(--letter-writing-font); font-size: 18px; line-height: 1.75; }
+.letter-reader-closing { margin-top: 32px; color: var(--letter-ink-color); white-space: pre-line; font-family: var(--letter-writing-font); font-size: 18px; line-height: 1.7; }
+.letter-reader-signature { margin-top: 5px; color: var(--letter-ink-color); font-family: var(--letter-writing-font); font-size: 25px; line-height: 1.4; }
 .letter-save-success .letter-card:first-child { animation: envelope-close 620ms var(--ease-out) both; }
 @keyframes envelope-close { 0% { transform: translateY(-4px) scale(1.015); } 45% { transform: translateY(-4px) scale(.985); } 100% { transform: none; } }
 @keyframes letter-paper-in { from { opacity: 0; transform: translateY(14px) rotate(.35deg); } to { opacity: 1; transform: none; } }

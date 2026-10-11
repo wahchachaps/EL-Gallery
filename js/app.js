@@ -110,6 +110,15 @@ const MONTH_NOTES = [
 
 let memories = [];
 
+const FAVORITES_STORAGE_KEY = "el-gallery-favorites";
+const FAVORITES_MIGRATION_KEY = "el-gallery-favorites-online-migrated:shared-gallery";
+let favoriteIds = new Set();
+let favoritesLoaded = false;
+let favoritesLoading = false;
+let favoritesError = "";
+const favoriteMutationVersions = new Map();
+const favoriteMutationQueues = new Map();
+
 
 /* =========================================================
    STATE
@@ -628,6 +637,20 @@ let isSavingLetter = false;
 let isDeletingLetter = false;
 let lastLetterSaveWasDraft = false;
 let letterMessageSelection = { start: 0, end: 0 };
+let letterEditorSnapshot = null;
+
+const LETTER_EDITOR_KEYS = [
+    "title",
+    "sender",
+    "recipient",
+    "letter_date",
+    "message",
+    "font_style",
+    "ink_color",
+    "paper_style",
+    "closing",
+    "signature"
+];
 
 
 /* =========================================================
@@ -728,11 +751,25 @@ function formLetter() {
     return { title: letterTitleInput.value.trim(), sender: letterSenderInput.value.trim(), recipient: letterRecipientInput.value.trim(), letter_date: letterDateInput.value, message: letterMessageInput.value, font_style: letterFontSelect.value, ink_color: selectedLetterInk, paper_style: selectedLetterPaper, closing: letterClosingInput.value.trim(), signature: letterSignatureInput.value.trim() };
 }
 
+function normalizeLetterEditorValues(values) {
+    return LETTER_EDITOR_KEYS.reduce((snapshot, key) => {
+        snapshot[key] = String(values[key] ?? "");
+        return snapshot;
+    }, {});
+}
+
+function letterEditorValuesEqual(left, right) {
+    return LETTER_EDITOR_KEYS.every(key => left?.[key] === right?.[key]);
+}
+
 function updateLetterDirtyState() {
     letterCharacterCount.textContent = `${letterMessageInput.value.length} / 12000`;
     letterMessageInput.style.height = "auto";
     letterMessageInput.style.height = `${Math.max(letterMessageInput.scrollHeight, 330)}px`;
-    letterEditorDirty = Object.entries(formLetter()).some(([key, value]) => !["font_style", "ink_color", "paper_style"].includes(key) && Boolean(value));
+    letterEditorDirty = !letterEditorSnapshot || !letterEditorValuesEqual(
+        normalizeLetterEditorValues(formLetter()),
+        letterEditorSnapshot
+    );
 }
 
 let selectedLetterInk = "black";
@@ -771,6 +808,7 @@ function setLetterStyle(fontStyle = "normal", inkColor = "black", paperStyle = "
 }
 
 function openLetterEditor(letter = null) {
+    if (isSavingLetter) return;
     editingLetterId = letter?.id || null;
     letterEditorTitle.textContent = letter ? "Edit your letter." : "Write a letter.";
     letterTitleInput.value = letter?.title || "";
@@ -784,13 +822,20 @@ function openLetterEditor(letter = null) {
     letterFormError.textContent = "";
     retryLetterSaveButton.hidden = true;
     updateLetterDirtyState();
+    letterEditorSnapshot = normalizeLetterEditorValues(formLetter());
+    letterEditorDirty = false;
     openModal(letterEditorModal);
 }
 
 function closeLetterEditor(force = false) {
+    if (isSavingLetter) {
+        letterFormError.textContent = "Please wait for the current save to finish.";
+        return false;
+    }
     if (!force && letterEditorDirty && !window.confirm("You have unsaved changes. Close this letter?")) return;
     letterEditorDirty = false;
     closeModal(letterEditorModal);
+    return true;
 }
 
 function showLetter(letter) {
@@ -828,17 +873,32 @@ function closeLetterReader() {
 async function saveLetter(isDraft) {
     if (isSavingLetter) return;
     lastLetterSaveWasDraft = isDraft;
-    const payload = formLetter();
+    const entered = formLetter();
+    const payload = isDraft
+        ? {
+            ...entered,
+            title: entered.title || "Untitled letter",
+            letter_date: entered.letter_date || dateToInputValue(new Date())
+        }
+        : entered;
     const missing = ["title", "sender", "recipient", "letter_date", "message"].filter(key => !payload[key]);
-    if (missing.length) { letterFormError.textContent = "Please complete every field before saving."; return; }
+    if (!isDraft && missing.length) {
+        letterFormError.textContent = "Please complete the title, sender, recipient, date, and message before saving the letter.";
+        retryLetterSaveButton.hidden = true;
+        return;
+    }
     isSavingLetter = true;
+    letterEditorDirty = true;
     saveLetterDraftButton.disabled = true; saveLetterButton.disabled = true;
+    document.querySelectorAll("#letterForm input, #letterForm textarea, #letterForm select, .letter-writing-toolbar button, .letter-writing-toolbar select, #previewLetterButton, #closeLetterEditorButton").forEach(control => { control.disabled = true; });
     saveLetterDraftButton.textContent = "SAVING…"; saveLetterButton.textContent = "SAVING…";
     letterFormError.textContent = "";
     try {
         const data = await requestLetters(editingLetterId ? `/${encodeURIComponent(editingLetterId)}` : "", { method: editingLetterId ? "PATCH" : "POST", body: JSON.stringify({ ...payload, is_draft: isDraft }) });
         const saved = normalizeLetter(data.letter || data);
         letters = [saved, ...letters.filter(letter => letter.id !== saved.id)];
+        letterEditorSnapshot = normalizeLetterEditorValues(formLetter());
+        letterEditorDirty = false;
         closeModal(letterEditorModal);
         if (lettersModal.classList.contains("open")) renderLetters(); else openLetters();
         lettersModal.classList.remove("letter-save-success");
@@ -852,6 +912,7 @@ async function saveLetter(isDraft) {
     } finally {
         isSavingLetter = false;
         saveLetterDraftButton.disabled = false; saveLetterButton.disabled = false;
+        document.querySelectorAll("#letterForm input, #letterForm textarea, #letterForm select, .letter-writing-toolbar button, .letter-writing-toolbar select, #previewLetterButton, #closeLetterEditorButton").forEach(control => { control.disabled = false; });
         saveLetterDraftButton.textContent = "SAVE DRAFT"; saveLetterButton.innerHTML = "SAVE LETTER <span>→</span>";
     }
 }
@@ -1584,10 +1645,7 @@ function preloadViewerSetNeighbors(memory) {
 
 
     [members[index + 1], members[index - 1]]
-        .filter(item =>
-            item &&
-            members.indexOf(item) > 0
-        )
+        .filter(Boolean)
         .forEach(item => {
             queueMediaPreload(
                 item,
@@ -1787,29 +1845,27 @@ function showToast(message) {
    FAVORITES
    ========================================================= */
 
-function getFavoriteIds() {
-
+function getLegacyFavoriteIds() {
     try {
-
-        return JSON.parse(
-            localStorage.getItem(
-                "el-gallery-favorites"
-            )
-        ) || [];
-
+        const ids = JSON.parse(localStorage.getItem(FAVORITES_STORAGE_KEY) || "[]");
+        return Array.isArray(ids)
+            ? [...new Set(ids.filter(id => typeof id === "string" && id))]
+            : [];
     } catch {
-
         return [];
     }
 }
 
+function getFavoriteIds() {
+    return [...favoriteIds];
+}
 
 function saveFavoriteIds(ids) {
-
-    localStorage.setItem(
-        "el-gallery-favorites",
-        JSON.stringify(ids)
+    favoriteIds = new Set(
+        (Array.isArray(ids) ? ids : [])
+            .filter(id => typeof id === "string" && id)
     );
+    updateFavoriteButtons();
 }
 
 
@@ -1820,41 +1876,88 @@ function isFavorite(id) {
 }
 
 
-function toggleFavorite(id) {
+async function requestFavoriteMutation(id, shouldAdd) {
+    const response = await apiFetch(
+        shouldAdd
+            ? `${API_URL}/api/favorites`
+            : `${API_URL}/api/favorites/${encodeURIComponent(id)}`,
+        shouldAdd
+            ? {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ memory_id: id })
+            }
+            : { method: "DELETE" }
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Could not update favorites.");
+}
 
-    const favorites =
-        getFavoriteIds();
-
-    const index =
-        favorites.indexOf(id);
-
-
-    if (index === -1) {
-
-        favorites.push(id);
-
-        showToast(
-            "Added to favorites ♡"
-        );
-
-    } else {
-
-        favorites.splice(
-            index,
-            1
-        );
-
-        showToast(
-            "Removed from favorites"
-        );
+async function toggleFavorite(id) {
+    if (!favoritesLoaded || !isAuthenticated) {
+        showToast("Favorites are still loading. Try again in a moment.");
+        return;
     }
 
-
-    saveFavoriteIds(
-        favorites
-    );
-
+    const shouldAdd = !favoriteIds.has(id);
+    if (shouldAdd) favoriteIds.add(id);
+    else favoriteIds.delete(id);
     updateFavoriteButtons();
+    renderFavorites();
+    showToast(shouldAdd ? "Added to favorites ♡" : "Removed from favorites");
+
+    const version = (favoriteMutationVersions.get(id) || 0) + 1;
+    favoriteMutationVersions.set(id, version);
+    const previousQueue = favoriteMutationQueues.get(id) || Promise.resolve();
+    const operation = previousQueue
+        .catch(() => {})
+        .then(() => requestFavoriteMutation(id, shouldAdd))
+        .catch(error => {
+            if (favoriteMutationVersions.get(id) !== version) return;
+            if (shouldAdd) favoriteIds.delete(id);
+            else favoriteIds.add(id);
+            updateFavoriteButtons();
+            renderFavorites();
+            showToast(`${error.message} Try again.`);
+        });
+    favoriteMutationQueues.set(id, operation);
+    await operation;
+}
+
+async function loadOnlineFavorites({ migrate = false } = {}) {
+    if (favoritesLoading) return;
+    favoritesLoading = true;
+    favoritesError = "";
+    if (favoritesModal.classList.contains("open")) renderFavorites();
+
+    try {
+        const response = await apiFetch(`${API_URL}/api/favorites`);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Could not load favorites.");
+        saveFavoriteIds(Array.isArray(data.favoriteIds) ? data.favoriteIds : []);
+        favoritesLoaded = true;
+
+        if (migrate && !localStorage.getItem(FAVORITES_MIGRATION_KEY)) {
+            const validLocalIds = getLegacyFavoriteIds()
+                .filter(id => memories.some(memory => memory.id === id))
+                .filter(id => !favoriteIds.has(id));
+            for (const id of validLocalIds) {
+                await requestFavoriteMutation(id, true);
+                favoriteIds.add(id);
+            }
+            localStorage.setItem(FAVORITES_MIGRATION_KEY, "complete");
+            localStorage.removeItem(FAVORITES_STORAGE_KEY);
+        }
+        updateFavoriteButtons();
+    } catch (error) {
+        favoritesError = error.message || "Could not load favorites.";
+        favoritesLoaded = false;
+        if (favoritesModal.classList.contains("open")) renderFavorites();
+        showToast(favoritesError);
+    } finally {
+        favoritesLoading = false;
+        if (favoritesModal.classList.contains("open")) renderFavorites();
+    }
 }
 
 
@@ -2590,8 +2693,8 @@ async function loadMemories() {
                 : [];
 
 
+        await loadOnlineFavorites({ migrate: true });
         buildGallery();
-
         updateTimeline();
 
 
@@ -5432,9 +5535,10 @@ confirmDeleteMemoryButton.addEventListener(
                 memory => memory.id !== memoryId
             );
 
-            saveFavoriteIds(
-                getFavoriteIds().filter(id => id !== memoryId)
-            );
+            favoriteIds.delete(memoryId);
+            favoriteMutationVersions.delete(memoryId);
+            favoriteMutationQueues.delete(memoryId);
+            updateFavoriteButtons();
 
             buildGallery();
 
@@ -6438,16 +6542,26 @@ closeSearchButton.addEventListener(
    ========================================================= */
 
 function openFavoritesModal() {
-
-    renderFavorites();
-
     openModal(
         favoritesModal
     );
+    renderFavorites();
+    loadOnlineFavorites();
 }
 
 
 function renderFavorites() {
+
+    if (favoritesLoading) {
+        favoritesGrid.innerHTML = '<div class="no-results" style="grid-column:1/-1">Loading favorites…</div>';
+        return;
+    }
+
+    if (favoritesError) {
+        favoritesGrid.innerHTML = `<div class="no-results" style="grid-column:1/-1">${escapeHTML(favoritesError)}<br><br><button type="button" class="memory-secondary-button" id="retryFavoritesButton">TRY AGAIN</button></div>`;
+        document.getElementById("retryFavoritesButton")?.addEventListener("click", () => loadOnlineFavorites());
+        return;
+    }
 
     const ids =
         getFavoriteIds();
@@ -7065,7 +7179,12 @@ function clearPrivateState() {
     memories = [];
     letters = [];
     expandedMemorySets.clear();
-    localStorage.removeItem("el-gallery-favorites");
+    favoriteIds.clear();
+    favoritesLoaded = false;
+    favoritesLoading = false;
+    favoritesError = "";
+    favoriteMutationVersions.clear();
+    favoriteMutationQueues.clear();
     pauseGalleryVideoPreviews();
     pauseOurFilmsVideo();
     cleanupGalleryVideoPreviews();
@@ -7186,8 +7305,13 @@ document.addEventListener(
 
 
         resumeGalleryVideoPreviews();
+        if (isAuthenticated) loadOnlineFavorites();
     }
 );
+
+window.addEventListener("focus", () => {
+    if (isAuthenticated) loadOnlineFavorites();
+});
 
 
 window.addEventListener(

@@ -5,7 +5,7 @@ supabase/.temp/
 dist/
 build/
 coverage/
-migrations/
+supabase/migrations/
 
 # Local secrets and environment overrides
 .dev.vars

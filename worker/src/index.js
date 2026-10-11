@@ -33,6 +33,11 @@ export default {
             } else if (!await sessionAuthorized(request, env)) {
                 response = json({ error: "Unauthorized." }, 401);
             } else if (
+                url.pathname === "/api/favorites" ||
+                url.pathname.startsWith("/api/favorites/")
+            ) {
+                response = await handleFavorites(request, env, url);
+            } else if (
                 url.pathname === "/api/letters" ||
                 url.pathname.startsWith("/api/letters/")
             ) {
@@ -425,6 +430,12 @@ async function deleteMemory(request, env, id) {
         method: "DELETE",
         headers: { Prefer: "return=minimal" }
     });
+    // The database foreign key also cascades this cleanup. Keep the explicit
+    // delete for installations that were created before the favorites FK.
+    await supabase(env, `gallery_favorites?memory_id=eq.${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: { Prefer: "return=minimal" }
+    });
     await env.MEDIA_BUCKET.delete(current.file_key);
 
     if (current.group_id) {
@@ -448,6 +459,69 @@ async function deleteMemory(request, env, id) {
     return json({ success: true });
 }
 
+async function handleFavorites(request, env, url) {
+    if (
+        !env.SUPABASE_URL ||
+        !(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY)
+    ) {
+        return json({ error: "Favorite storage is not configured." }, 503);
+    }
+
+    const collection = url.pathname === "/api/favorites";
+    const match = url.pathname.match(/^\/api\/favorites\/([^/]+)$/);
+    const memoryId = match ? decodeURIComponent(match[1]) : null;
+
+    if (!collection && !match) return json({ error: "Not found." }, 404);
+    if (memoryId && !UUID_PATTERN.test(memoryId)) {
+        return json({ error: "Invalid memory ID." }, 400);
+    }
+
+    const scope = "gallery_scope=eq.private-gallery";
+
+    if (collection && request.method === "GET") {
+        const rows = await supabase(
+            env,
+            `gallery_favorites?${scope}&select=memory_id,created_at&order=created_at.asc`
+        );
+        return json({ favoriteIds: rows.map(row => row.memory_id) });
+    }
+
+    if (collection && request.method === "POST") {
+        const input = await request.json().catch(() => null);
+        if (!input || typeof input.memory_id !== "string" || !UUID_PATTERN.test(input.memory_id)) {
+            return json({ error: "A valid memory_id is required." }, 400);
+        }
+
+        const found = await selectRows(env, `id=eq.${encodeURIComponent(input.memory_id)}&select=id&limit=1`);
+        if (!found.length) return json({ error: "Memory not found." }, 404);
+
+        await supabase(env, "gallery_favorites", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Prefer: "resolution=ignore-duplicates,return=minimal"
+            },
+            body: JSON.stringify({
+                gallery_scope: "private-gallery",
+                memory_id: input.memory_id
+            })
+        });
+        return json({ ok: true, memoryId: input.memory_id });
+    }
+
+    if (memoryId && request.method === "DELETE") {
+        await supabase(env, `gallery_favorites?${scope}&memory_id=eq.${encodeURIComponent(memoryId)}`, {
+            method: "DELETE",
+            headers: { Prefer: "return=minimal" }
+        });
+        return json({ ok: true, memoryId });
+    }
+
+    return json({ error: "Method not allowed." }, 405, {
+        Allow: collection ? "GET, POST" : "DELETE"
+    });
+}
+
 const LETTER_MAX = {
     title: 120,
     sender: 80,
@@ -462,6 +536,10 @@ const LETTER_STYLES = {
     ink_color: new Set(["black", "navy", "burgundy"]),
     paper_style: new Set(["lined", "plain"])
 };
+
+function todayLetterDate() {
+    return new Date().toISOString().slice(0, 10);
+}
 
 function decodeTokenPart(value) {
     const base64 = value
@@ -584,25 +662,27 @@ function validateLetterInput(input) {
 
     const data = {};
 
-    for (const field of [
-        "title",
-        "sender",
-        "recipient",
-        "message"
-    ]) {
+    if (typeof input.is_draft !== "boolean") {
+        return { error: "is_draft must be boolean." };
+    }
+
+    const isDraft = input.is_draft;
+    for (const field of ["title", "sender", "recipient", "message"]) {
         if (
             typeof input[field] !== "string" ||
-            !input[field].trim()
+            (!isDraft && !input[field].trim())
         ) {
-            return { error: `${field} is required.` };
+            return { error: `${field} must be a nonblank string.` };
         }
 
         if (input[field].length > LETTER_MAX[field]) {
             return { error: `${field} is too long.` };
         }
 
-        data[field] = input[field].trim();
+        data[field] = field === "message" ? input[field] : input[field].trim();
     }
+
+    if (isDraft && !data.title) data.title = "Untitled letter";
 
     for (const field of ["closing", "signature"]) {
         if (input[field] !== undefined && typeof input[field] !== "string") {
@@ -621,20 +701,18 @@ function validateLetterInput(input) {
         data[field] = input[field] || (field === "font_style" ? "normal" : field === "ink_color" ? "black" : "lined");
     }
 
-    if (
-        typeof input.letter_date !== "string" ||
-        !validDate(input.letter_date)
-    ) {
+    if (typeof input.letter_date !== "string") {
+        return { error: "letter_date must be a string." };
+    }
+    if (!input.letter_date && isDraft) {
+        data.letter_date = todayLetterDate();
+    } else if (!validDate(input.letter_date)) {
         return {
             error: "A valid letter_date is required (YYYY-MM-DD)."
         };
+    } else {
+        data.letter_date = input.letter_date;
     }
-
-    if (typeof input.is_draft !== "boolean") {
-        return { error: "is_draft must be boolean." };
-    }
-
-    data.letter_date = input.letter_date;
     data.is_draft = input.is_draft;
 
     return { data };
