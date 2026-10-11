@@ -2732,6 +2732,7 @@ function createMonthFrames(
                         data-collapse-group="${escapeHTML(item.groupId)}"
                         data-cover-id="${escapeHTML(item.coverId)}"
                         aria-label="Collapse memory set with ${item.total} memories"
+                        aria-expanded="true"
                         title="Collapse memory set"
                         style="--set-stagger:${Math.min(item.total, 8) * 28}ms"
                     >
@@ -2799,6 +2800,7 @@ function createMonthFrames(
                     class="memory-frame ${layout} ${setInfo ? "memory-set-member" : ""}"
                     data-memory-id="${escapeHTML(memory.id)}"
                     ${setInfo ? `data-memory-set="${escapeHTML(setInfo.groupId)}"` : ""}
+                    ${setInfo?.position === 1 ? `data-memory-set-cover="${escapeHTML(setInfo.groupId)}"` : ""}
                     style="--frame-stagger:${revealDelay}ms;--set-stagger:${setInfo ? Math.min(setInfo.position - 1, 8) * 32 : 0}ms"
                 >
                     ${createMemoryMedia(
@@ -2812,6 +2814,19 @@ function createMonthFrames(
 
                     ${memory.type === "video"
                         ? `<div class="video-indicator">● LIVE</div>`
+                        : ""}
+
+                    ${setInfo?.position === 1
+                        ? `<button
+                                type="button"
+                                class="memory-set-collapse-shortcut"
+                                data-collapse-group="${escapeHTML(setInfo.groupId)}"
+                                aria-label="Collapse memory set"
+                                aria-expanded="true"
+                            >
+                                <span aria-hidden="true">&uarr;</span>
+                                <span>Collapse Set</span>
+                            </button>`
                         : ""}
 
                     <button
@@ -3258,6 +3273,11 @@ function attachFrameEvents() {
                     ".memory-open-control"
                 );
 
+            const isExpandedCover = frame.hasAttribute("data-memory-set-cover");
+            let coverClickTimer = null;
+            let lastTouchTapAt = 0;
+            let suppressCoverClickUntil = 0;
+
             const openFrame = () => {
                 openControl?.focus({
                     preventScroll: true
@@ -3265,6 +3285,20 @@ function attachFrameEvents() {
 
                 openViewerById(
                     frame.dataset.memoryId
+                );
+            };
+
+            const collapseCover = event => {
+                event?.preventDefault();
+                event?.stopPropagation();
+                window.clearTimeout(coverClickTimer);
+                coverClickTimer = null;
+                suppressCoverClickUntil = performance.now() + 420;
+                toggleGalleryMemorySet(
+                    frame.dataset.memorySet,
+                    false,
+                    frame,
+                    true
                 );
             };
 
@@ -3280,10 +3314,41 @@ function attachFrameEvents() {
                         return;
                     }
 
+                    if (event.target.closest(".memory-set-collapse-shortcut")) {
+                        return;
+                    }
+
+                    if (isExpandedCover) {
+                        if (performance.now() < suppressCoverClickUntil || event.detail > 1) {
+                            collapseCover(event);
+                            return;
+                        }
+
+                        window.clearTimeout(coverClickTimer);
+                        coverClickTimer = window.setTimeout(openFrame, 360);
+                        return;
+                    }
+
                     openFrame();
 
                 }
             );
+
+            if (isExpandedCover) {
+                frame.addEventListener("pointerup", event => {
+                    if (event.pointerType !== "touch") return;
+                    const now = performance.now();
+                    if (now - lastTouchTapAt < 360) {
+                        suppressCoverClickUntil = now + 420;
+                        lastTouchTapAt = 0;
+                        collapseCover(event);
+                    } else {
+                        lastTouchTapAt = now;
+                    }
+                }, { passive: false });
+
+                frame.addEventListener("dblclick", collapseCover);
+            }
 
         });
 
@@ -3303,7 +3368,7 @@ function attachFrameEvents() {
 
 
     document
-        .querySelectorAll("[data-collapse-group]")
+        .querySelectorAll("[data-collapse-group]:not(.memory-set-collapse-shortcut)")
         .forEach(button => {
             button.addEventListener("click", event => {
                 toggleGalleryMemorySet(
@@ -3311,6 +3376,21 @@ function attachFrameEvents() {
                     false,
                     button,
                     event.detail === 0
+                );
+            });
+        });
+
+    document
+        .querySelectorAll(".memory-set-collapse-shortcut")
+        .forEach(button => {
+            button.addEventListener("click", event => {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleGalleryMemorySet(
+                    button.dataset.collapseGroup,
+                    false,
+                    button.closest("[data-memory-set-cover]") || button,
+                    true
                 );
             });
         });
@@ -3452,13 +3532,23 @@ function toggleGalleryMemorySet(
 
         if (target) {
             const targetRect = target.getBoundingClientRect();
+            const targetIsVisible = isMobileGallery()
+                ? targetRect.bottom >= 0 && targetRect.top <= window.innerHeight
+                : targetRect.right >= 0 && targetRect.left <= window.innerWidth;
             if (isMobileGallery()) {
-                target.scrollIntoView({ block: "center", behavior: "auto" });
+                if (shouldExpand || !targetIsVisible) {
+                    target.scrollIntoView({
+                        block: "center",
+                        behavior: prefersReducedMotion() ? "auto" : "smooth"
+                    });
+                }
             } else {
-                const previousScrollBehavior = galleryTrack.style.scrollBehavior;
-                galleryTrack.style.scrollBehavior = "auto";
-                galleryTrack.scrollLeft += targetRect.left - desiredLeft;
-                galleryTrack.style.scrollBehavior = previousScrollBehavior;
+                if (shouldExpand || !targetIsVisible) {
+                    const previousScrollBehavior = galleryTrack.style.scrollBehavior;
+                    galleryTrack.style.scrollBehavior = prefersReducedMotion() ? "auto" : "smooth";
+                    galleryTrack.scrollLeft += targetRect.left - desiredLeft;
+                    galleryTrack.style.scrollBehavior = previousScrollBehavior;
+                }
             }
 
             if (restoreFocus) {
@@ -3686,6 +3776,7 @@ function scrollToIntro() {
             block: "start",
             behavior: prefersReducedMotion() ? "auto" : "smooth"
         });
+
         return;
     }
 
@@ -3694,7 +3785,6 @@ function scrollToIntro() {
         behavior: prefersReducedMotion() ? "auto" : "smooth"
     });
 }
-
 
 function scrollToMonth(index) {
 

@@ -1205,6 +1205,50 @@ button,
     animation: memory-set-reveal 280ms ease both;
 }
 
+.memory-frame[data-memory-set-cover] {
+    touch-action: manipulation;
+    user-select: none;
+}
+
+.memory-set-collapse-shortcut {
+    position: absolute;
+    top: 11px;
+    left: 11px;
+    z-index: 6;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 44px;
+    padding: 0 11px;
+    border: 1px solid rgba(255, 190, 187, 0.38);
+    border-radius: 999px;
+    background: rgba(12, 6, 7, 0.78);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(8px);
+    color: var(--cream);
+    cursor: pointer;
+    font: 9px monospace;
+    letter-spacing: 0.9px;
+    text-transform: uppercase;
+    touch-action: manipulation;
+    user-select: none;
+    transition: border-color 180ms ease, background-color 180ms ease, color 180ms ease, transform 180ms ease;
+}
+
+.memory-set-collapse-shortcut > span:first-child {
+    color: var(--pink-light);
+    font: 17px/1 Georgia, serif;
+}
+
+.memory-set-collapse-shortcut:hover,
+.memory-set-collapse-shortcut:focus-visible {
+    border-color: rgba(255, 117, 159, 0.7);
+    background: rgba(30, 10, 15, 0.9);
+    color: #fff4ee;
+    outline: none;
+    transform: translateY(-1px);
+}
+
 .memory-set-sequence-caption {
     color: var(--orange-light);
     font-family: monospace;
