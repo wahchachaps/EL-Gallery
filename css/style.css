@@ -3018,6 +3018,12 @@ button,
         transform 180ms ease;
 }
 
+.viewer-action-icon {
+    width: 15px;
+    height: 15px;
+    flex: 0 0 auto;
+}
+
 .viewer-action-button:hover,
 .viewer-actions .favorite-large:hover {
     transform: translateY(-1px);
@@ -5832,6 +5838,50 @@ button:active {
         padding: 26px 0;
     }
 
+    .mobile-memory-cta {
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        width: 100%;
+        min-height: 52px;
+        margin-top: 22px;
+        padding: 0 14px;
+        border: 1px solid rgba(255, 155, 185, .3);
+        border-radius: 8px;
+        background: linear-gradient(135deg, rgba(255, 135, 95, .16), rgba(255, 117, 159, .08));
+        color: var(--cream);
+        cursor: pointer;
+        font: 600 11px monospace;
+        letter-spacing: 1.2px;
+        text-align: left;
+        text-transform: uppercase;
+        transition: color 180ms ease, background 180ms ease, border-color 180ms ease, transform 180ms ease;
+    }
+
+    .mobile-memory-cta:hover,
+    .mobile-memory-cta:focus-visible {
+        border-color: rgba(255, 155, 185, .62);
+        background: linear-gradient(135deg, rgba(255, 135, 95, .24), rgba(255, 117, 159, .14));
+        color: #fff4ee;
+        outline: 0;
+        transform: translateY(-1px);
+    }
+
+    .mobile-memory-cta:active {
+        transform: translateY(1px);
+    }
+
+    .mobile-memory-cta-icon {
+        display: inline-grid;
+        width: 24px;
+        height: 24px;
+        place-items: center;
+        border: 1px solid rgba(255, 190, 187, .35);
+        border-radius: 50%;
+        color: var(--pink-light);
+        font: 22px/1 Georgia, serif;
+    }
+
     .mobile-nav-link {
         display: flex;
         align-items: center;
@@ -5911,12 +5961,38 @@ button:active {
     body.mobile-nav-open {
         overflow: hidden;
     }
+
+    .viewer-information {
+        display: block;
+        padding-bottom: max(8px, env(safe-area-inset-bottom));
+    }
+
+    .viewer-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 48px;
+        gap: 8px;
+        width: 100%;
+        margin-top: 15px;
+    }
+
+    .viewer-action-button,
+    .viewer-actions .favorite-large {
+        width: 100%;
+        min-height: 46px;
+        height: 46px;
+        padding: 0 8px;
+    }
+
+    .viewer-actions .favorite-large {
+        width: 48px;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .mobile-menu-toggle,
     .mobile-nav-drawer,
-    .mobile-nav-link {
+    .mobile-nav-link,
+    .mobile-memory-cta {
         transition: none;
     }
 }

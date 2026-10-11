@@ -31,6 +31,7 @@ const mobileMenuToggle = document.getElementById("mobileMenuToggle");
 const mobileNavBackdrop = document.getElementById("mobileNavBackdrop");
 const mobileNavDrawer = document.getElementById("mobileNavDrawer");
 const mobileNavClose = document.getElementById("mobileNavClose");
+const mobileAddMemoryButton = document.getElementById("mobileAddMemoryButton");
 const mobileAccountName = document.getElementById("mobileAccountName");
 const mobileLogoutButton = document.getElementById("mobileLogoutButton");
 const viewerAttribution = document.getElementById("viewerAttribution");
@@ -72,7 +73,7 @@ function setMobileMenuOpen(isOpen, restoreFocus = true) {
 
     if (shouldOpen) {
         syncMobileNavigationState();
-        requestAnimationFrame(() => mobileNavDrawer.querySelector(".mobile-nav-link")?.focus({ preventScroll: true }));
+        requestAnimationFrame(() => mobileNavDrawer.querySelector(".mobile-memory-cta, .mobile-nav-link")?.focus({ preventScroll: true }));
     } else if (restoreFocus) {
         requestAnimationFrame(() => mobileMenuToggle.focus({ preventScroll: true }));
     }
@@ -3980,6 +3981,11 @@ mobileMenuToggle.addEventListener("click", () => {
 });
 mobileNavClose.addEventListener("click", () => closeMobileMenu());
 mobileNavBackdrop.addEventListener("click", () => closeMobileMenu());
+mobileAddMemoryButton.addEventListener("click", () => {
+    closeMobileMenu(false);
+    addMemoryButton.focus({ preventScroll: true });
+    openUploadModal();
+});
 mobileLogoutButton.addEventListener("click", () => {
     closeMobileMenu(false);
     logout();
