@@ -4034,20 +4034,15 @@ function updateTimeline() {
     }
 
 
-    homeButton.classList.toggle(
-        "active",
+    // The month film strips are part of the Home gallery, not the
+    // separate Our Films slideshow. Keep the main-page navigation state
+    // stable while scrolling through any month or exposure.
+    const openModal = document.querySelector(".modal.open");
 
-        activeMonth === -1 &&
-        (mobile
-            ? window.scrollY < window.innerHeight * 0.5
-            : galleryTrack.scrollLeft < window.innerWidth * 0.5)
-    );
-
-
-    filmsButton.classList.toggle(
-        "active",
-        activeMonth >= 0
-    );
+    if (!openModal) {
+        homeButton.classList.add("active");
+        filmsButton.classList.remove("active");
+    }
 
     syncMobileNavigationState();
 }
@@ -4669,6 +4664,16 @@ function updateViewerFavoriteButton() {
             ? "Remove from favorites"
             : "Add to favorites"
     );
+    viewerFavoriteButton.setAttribute(
+        "title",
+        favorite
+            ? "Remove from favorites"
+            : "Add to favorites"
+    );
+    viewerFavoriteButton.innerHTML = `
+        <svg class="viewer-action-icon viewer-favorite-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 20.2 3.8 12.5C-.7 8.3 2.1 1.8 7.3 3.1c1.9.5 3.4 2 4.7 3.5 1.3-1.5 2.8-3 4.7-3.5 5.2-1.3 8 5.2 3.5 9.4L12 20.2Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+        </svg>`;
 }
 
 

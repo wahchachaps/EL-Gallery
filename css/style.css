@@ -3120,6 +3120,10 @@ button,
     color: var(--pink-light);
 }
 
+.viewer-actions .favorite-large.favorite .viewer-favorite-icon {
+    fill: currentColor;
+}
+
 
 /* EDIT AND DELETE DIALOGS */
 
@@ -6071,6 +6075,71 @@ button:active {
     .login-screen, .login-submit, .login-submit-arrow, .login-field input, .password-control button { animation: none; transition: none; }
 }
 
+/* Keep the media viewer actions compact and inside the viewer on phones. */
+@media (max-width: 767px) {
+    .viewer,
+    .viewer-main,
+    .viewer-information,
+    .viewer-actions {
+        box-sizing: border-box;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .viewer-information {
+        display: block;
+        padding-bottom: max(8px, env(safe-area-inset-bottom));
+    }
+
+    .viewer-actions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: clamp(6px, 2vw, 10px);
+        width: 100%;
+        margin-top: 15px;
+        overflow: visible;
+    }
+
+    .viewer-action-button,
+    .viewer-actions .favorite-large {
+        box-sizing: border-box;
+        width: 100%;
+        min-width: 0;
+        min-height: 46px;
+        height: 46px;
+        padding: 0 6px;
+        border-radius: var(--control-radius);
+    }
+
+    .viewer-action-button {
+        order: 1;
+    }
+
+    .viewer-actions .favorite-large {
+        order: 2;
+        font-size: 0;
+    }
+
+    .viewer-action-button.delete {
+        order: 3;
+    }
+
+    .viewer-action-button span,
+    .viewer-actions .favorite-large::after {
+        display: none;
+    }
+
+    .viewer-action-icon {
+        width: 20px;
+        height: 20px;
+    }
+
+    .viewer-actions .favorite-large .viewer-favorite-icon {
+        display: block;
+        flex: 0 0 20px;
+    }
+}
+
 /* LETTERS */
 .letters-dialog,
 .letter-editor-dialog,
@@ -6448,6 +6517,18 @@ button:active {
 
     .viewer-actions .favorite-large {
         grid-column: 1 / -1;
+        width: 100%;
+    }
+}
+
+/* Keep the three viewer actions on one row, including very narrow phones. */
+@media (max-width: 767px) {
+    .viewer-actions {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .viewer-actions .favorite-large {
+        grid-column: auto;
         width: 100%;
     }
 }
