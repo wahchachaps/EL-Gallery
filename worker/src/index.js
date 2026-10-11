@@ -8,7 +8,7 @@ const SUPPORTED_TYPES = new Set([
 ]);
 
 const SESSION_COOKIE = "__Host-el_gallery_session";
-const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+const SESSION_TTL_SECONDS = 60 * 60 * 2;
 const MAX_LOGIN_FAILURES = 5;
 const LOGIN_WINDOW_SECONDS = 15 * 60;
 const ACCOUNTS = {
@@ -19,6 +19,13 @@ const ACCOUNTS = {
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
+
+        if (!url.pathname.startsWith("/api/")) {
+            return env.ASSETS
+                ? env.ASSETS.fetch(request)
+                : new Response("Gallery assets are not configured.", { status: 503 });
+        }
+
         const cors = corsHeaders(request, env);
 
         if (request.method === "OPTIONS") {
@@ -83,16 +90,17 @@ function corsHeaders(request, env) {
         .split(",")
         .map(value => value.trim());
     const origin = request.headers.get("Origin");
-    const allowedOrigin = configured.includes(origin) ? origin : configured[0];
-
-    return new Headers({
-        "Access-Control-Allow-Origin": allowedOrigin,
+    const headers = new Headers({
         "Access-Control-Allow-Headers": "Content-Type, Range",
         "Access-Control-Allow-Credentials": "true",
         "Access-Control-Allow-Methods": "GET, HEAD, POST, PATCH, DELETE, OPTIONS",
         "Access-Control-Expose-Headers": "Content-Length, Content-Range, ETag, Accept-Ranges",
         Vary: "Origin"
     });
+    if (origin && configured.includes(origin)) {
+        headers.set("Access-Control-Allow-Origin", origin);
+    }
+    return headers;
 }
 
 function isAllowedOrigin(request, env) {
@@ -227,13 +235,59 @@ async function sessionAuthorized(request, env) {
     if (!token) return { authenticated: false, reason: "missing" };
     try {
         const hash = await sha256Hex(token);
-        const rows = await supabase(env, `gallery_sessions?token_hash=eq.${hash}&revoked_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,username,account_username,display_name&limit=1`);
+        const rows = await supabase(env, `gallery_sessions?token_hash=eq.${hash}&revoked_at=is.null&select=id,username,account_username,display_name,created_at,expires_at&limit=1`);
         if (!rows.length) return { authenticated: false, reason: "expired" };
-        const storedUsername = rows[0].account_username || rows[0].username;
+
+        const sessionRow = rows[0];
+        const now = Date.now();
+        const createdAtMs = Date.parse(sessionRow.created_at || "");
+        const storedExpiryMs = Date.parse(sessionRow.expires_at || "");
+        // The creation timestamp is authoritative for the fixed lifetime. This also caps
+        // sessions created under the former seven-day policy when they are next used.
+        // Sessions without a creation timestamp cannot be proven to satisfy the
+        // fixed lifetime, so invalidate them rather than granting extra time.
+        const hardExpiryMs = Number.isFinite(createdAtMs)
+            ? createdAtMs + SESSION_TTL_SECONDS * 1000
+            : now;
+        const effectiveExpiryMs = Math.min(storedExpiryMs, hardExpiryMs);
+
+        if (!Number.isFinite(effectiveExpiryMs) || now >= effectiveExpiryMs) {
+            try {
+                await supabase(env, `gallery_sessions?id=eq.${encodeURIComponent(sessionRow.id)}&revoked_at=is.null`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+                    body: JSON.stringify({ revoked_at: new Date(now).toISOString() })
+                });
+            } catch (error) {
+                console.warn("Could not revoke expired session:", error);
+            }
+            return { authenticated: false, reason: "expired" };
+        }
+
+        // Safely cap older sessions in storage as well as enforcing the cap in memory.
+        if (Number.isFinite(storedExpiryMs) && storedExpiryMs > effectiveExpiryMs) {
+            try {
+                await supabase(env, `gallery_sessions?id=eq.${encodeURIComponent(sessionRow.id)}&revoked_at=is.null`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+                    body: JSON.stringify({ expires_at: new Date(effectiveExpiryMs).toISOString() })
+                });
+            } catch (error) {
+                console.warn("Could not cap legacy session expiry:", error);
+            }
+        }
+
+        const storedUsername = sessionRow.account_username || sessionRow.username;
         const username = storedUsername === "elvince" ? "husbun" : storedUsername;
         const account = ACCOUNTS[username];
         return account
-            ? { authenticated: true, reason: "valid", account }
+            ? {
+                authenticated: true,
+                reason: "valid",
+                account,
+                createdAt: Number.isFinite(createdAtMs) ? new Date(createdAtMs).toISOString() : null,
+                expiresAt: new Date(effectiveExpiryMs).toISOString()
+            }
             : { authenticated: false, reason: "legacy-unknown-account" };
     } catch (error) {
         throw new ServiceUnavailableError("Session validation is temporarily unavailable.");
@@ -259,7 +313,7 @@ async function loginRateLimit(request, env, failed) {
 }
 
 function sessionCookie(token, maxAge = SESSION_TTL_SECONDS) {
-    return `${SESSION_COOKIE}=${encodeURIComponent(token)}; Max-Age=${maxAge}; Path=/; Secure; HttpOnly; SameSite=None`;
+    return `${SESSION_COOKIE}=${encodeURIComponent(token)}; Max-Age=${maxAge}; Path=/; Secure; HttpOnly; SameSite=Lax`;
 }
 
 async function handleAuth(request, env, url) {
@@ -267,8 +321,10 @@ async function handleAuth(request, env, url) {
         const session = await sessionAuthorized(request, env);
         return json({
             authenticated: session.authenticated,
-            ...(session.account ? { user: { username: session.account.username, displayName: session.account.displayName } } : {})
-        });
+            reason: session.reason,
+            ...(session.account ? { user: { username: session.account.username, displayName: session.account.displayName } } : {}),
+            ...(session.expiresAt ? { createdAt: session.createdAt, expiresAt: session.expiresAt } : {})
+        }, session.authenticated || session.reason === "missing" ? 200 : 401);
     }
 
     if (url.pathname === "/api/auth/logout" && request.method === "POST") {
@@ -305,13 +361,14 @@ async function handleAuth(request, env, url) {
         return json({ error: "Incorrect username or password." }, 401);
     }
     const token = randomToken();
-    const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
+    const createdAt = new Date();
+    const expiresAt = new Date(createdAt.getTime() + SESSION_TTL_SECONDS * 1000).toISOString();
     await supabase(env, "gallery_sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
-        body: JSON.stringify({ token_hash: await sha256Hex(token), username, account_username: account.username, display_name: account.displayName, expires_at: expiresAt })
+        body: JSON.stringify({ token_hash: await sha256Hex(token), username, account_username: account.username, display_name: account.displayName, created_at: createdAt.toISOString(), expires_at: expiresAt })
     });
-    return json({ ok: true, user: { username: account.username, displayName: account.displayName } }, 200, { "Set-Cookie": sessionCookie(token) });
+    return json({ ok: true, user: { username: account.username, displayName: account.displayName }, createdAt: createdAt.toISOString(), expiresAt }, 200, { "Set-Cookie": sessionCookie(token) });
 }
 
 const selectRows = (env, query) =>

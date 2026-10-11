@@ -3,9 +3,20 @@
    ========================================================= */
 
 
-const API_URL = ["localhost", "127.0.0.1"].includes(window.location.hostname)
+const CANONICAL_GALLERY_ORIGIN = "https://el-gallery-api.elvincemaranan.workers.dev";
+const isLocalGallery = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+const isGitHubPagesGallery = window.location.hostname.endsWith(".github.io");
+const isHttpGallery = window.location.protocol === "http:" || window.location.protocol === "https:";
+
+if (isGitHubPagesGallery && window.location.origin !== CANONICAL_GALLERY_ORIGIN) {
+    window.location.replace(`${CANONICAL_GALLERY_ORIGIN}/`);
+}
+
+const API_URL = isLocalGallery
     ? "http://127.0.0.1:8787"
-    : "https://el-gallery-api.elvincemaranan.workers.dev";
+    : isHttpGallery && !isGitHubPagesGallery
+        ? window.location.origin
+        : CANONICAL_GALLERY_ORIGIN;
 
 const loginScreen = document.getElementById("loginScreen");
 const loginForm = document.getElementById("loginForm");
@@ -33,6 +44,12 @@ let authGeneration = 0;
 let galleryInitializationPromise = null;
 let memoriesRequestVersion = 0;
 let currentUser = null;
+let sessionExpiresAt = 0;
+let sessionWarningTimer = null;
+let sessionExpiryTimer = null;
+let sessionCheckPromise = null;
+let pendingLetterSnapshot = null;
+const SESSION_WARNING_MS = 5 * 60 * 1000;
 
 function syncMobileNavigationState() {
     document.querySelectorAll(".mobile-nav-link").forEach(link => {
@@ -78,19 +95,67 @@ async function apiFetch(input, options = {}) {
     return response;
 }
 
+function clearSessionTimers() {
+    clearTimeout(sessionWarningTimer);
+    clearTimeout(sessionExpiryTimer);
+    sessionWarningTimer = null;
+    sessionExpiryTimer = null;
+    sessionExpiresAt = 0;
+}
+
+function scheduleSessionTimers(expiresAt) {
+    clearSessionTimers();
+    const expiry = Date.parse(expiresAt || "");
+    if (!Number.isFinite(expiry)) return;
+    sessionExpiresAt = expiry;
+    const warningDelay = Math.max(0, expiry - Date.now() - SESSION_WARNING_MS);
+    sessionWarningTimer = window.setTimeout(() => {
+        if (isAuthenticated && Date.now() < sessionExpiresAt) {
+            showToast("Your session expires in 5 minutes. Please save your work.");
+        }
+    }, warningDelay);
+    sessionExpiryTimer = window.setTimeout(() => {
+        if (isAuthenticated && Date.now() >= sessionExpiresAt) handleSessionExpired();
+    }, Math.max(0, expiry - Date.now()));
+}
+
+function applySessionData(data) {
+    if (data?.authenticated && data.expiresAt) scheduleSessionTimers(data.expiresAt);
+}
+
+async function revalidateSession() {
+    if (!isAuthenticated || authRedirecting) return false;
+    if (sessionCheckPromise) return sessionCheckPromise;
+    const requestGeneration = authGeneration;
+    sessionCheckPromise = (async () => {
+        try {
+            const response = await fetch(`${API_URL}/api/auth/me`, { credentials: "include", cache: "no-store" });
+            const data = await response.json().catch(() => ({}));
+            if (requestGeneration !== authGeneration || !isAuthenticated) return false;
+            if (response.ok && data.authenticated) {
+                applySessionData(data);
+                return true;
+            }
+            if (response.status === 401 && data.authenticated === false) {
+                handleSessionExpired();
+                return false;
+            }
+            return null;
+        } catch (error) {
+            console.warn("Could not revalidate session:", error);
+            return null;
+        } finally {
+            sessionCheckPromise = null;
+        }
+    })();
+    return sessionCheckPromise;
+}
+
 async function confirmSessionExpired(requestGeneration) {
     if (!isAuthenticated || requestGeneration !== authGeneration || authRedirecting) return;
     try {
-        const response = await fetch(`${API_URL}/api/auth/me`, {
-            credentials: "include",
-            cache: "no-store"
-        });
-        const data = await response.json().catch(() => ({}));
         if (requestGeneration !== authGeneration || !isAuthenticated) return;
-        if (response.ok && data.authenticated) return;
-        if (response.status === 401 && data.authenticated === false) {
-            handleSessionExpired();
-        }
+        await revalidateSession();
     } catch (error) {
         console.warn("Could not confirm session state after a 401:", error);
     }
@@ -853,6 +918,39 @@ function updateLetterDirtyState() {
         normalizeLetterEditorValues(formLetter()),
         letterEditorSnapshot
     );
+}
+
+function captureUnsavedLetterSnapshot() {
+    if (!isAuthenticated || !currentUser || !letterEditorModal.classList.contains("open") || !letterEditorDirty) return;
+    pendingLetterSnapshot = {
+        username: currentUser.username,
+        values: formLetter(),
+        editingLetterId,
+        inkColor: selectedLetterInk,
+        paperStyle: selectedLetterPaper
+    };
+}
+
+function restoreUnsavedLetterSnapshot() {
+    if (!pendingLetterSnapshot) return;
+    if (!currentUser || pendingLetterSnapshot.username !== currentUser.username) {
+        pendingLetterSnapshot = null;
+        return;
+    }
+    const snapshot = pendingLetterSnapshot;
+    pendingLetterSnapshot = null;
+    const sourceLetter = letters.find(letter => letter.id === snapshot.editingLetterId) || null;
+    openLetterEditor(sourceLetter);
+    editingLetterId = snapshot.editingLetterId;
+    letterTitleInput.value = snapshot.values.title;
+    letterSenderInput.value = snapshot.values.sender;
+    letterRecipientInput.value = snapshot.values.recipient;
+    letterDateInput.value = snapshot.values.letter_date;
+    letterMessageInput.value = snapshot.values.message;
+    letterClosingInput.value = snapshot.values.closing;
+    letterSignatureInput.value = snapshot.values.signature;
+    setLetterStyle(snapshot.values.font_style, snapshot.inkColor, snapshot.paperStyle);
+    updateLetterDirtyState();
 }
 
 let selectedLetterInk = "black";
@@ -7325,6 +7423,8 @@ document.addEventListener(
 let galleryInitialized = false;
 
 function showLogin(message = "") {
+    captureUnsavedLetterSnapshot();
+    clearSessionTimers();
     authRedirecting = false;
     isAuthenticated = false;
     currentUser = null;
@@ -7380,7 +7480,7 @@ function handleSessionExpired() {
     galleryInitialized = false;
     galleryInitializationPromise = null;
     clearPrivateState();
-    showLogin("Your session expired. Please sign in again.");
+    showLogin("Your 2-hour session has ended. Please sign in again.");
 }
 
 async function submitLogin(event) {
@@ -7419,15 +7519,17 @@ async function submitLogin(event) {
         if (sessionResponse.status === 503) {
             throw new Error("The gallery is temporarily unavailable. Retry shortly.");
         }
-        if (!sessionResponse.ok || !sessionData.authenticated) {
-            throw new Error("Your browser could not maintain the login session. Check privacy settings or use the supported gallery address.");
+        if (sessionResponse.status === 401 || !sessionResponse.ok || !sessionData.authenticated) {
+            throw new Error("Unable to verify the new session. Please try again.");
         }
 
         loginForm.reset();
         currentUser = sessionData.user || { username, displayName: username };
         authGeneration += 1;
+        applySessionData(sessionData);
         showGallery();
         await initializeGallery();
+        restoreUnsavedLetterSnapshot();
     } catch (error) {
         loginError.textContent = error instanceof TypeError
             ? "Unable to reach the private archive. Check that the Worker is online and try again."
@@ -7522,6 +7624,7 @@ document.addEventListener(
 
         resumeGalleryVideoPreviews();
         if (isAuthenticated) {
+            revalidateSession();
             loadOnlineFavorites();
             loadMemories();
         }
@@ -7530,6 +7633,7 @@ document.addEventListener(
 
 window.addEventListener("focus", () => {
     if (isAuthenticated) {
+        revalidateSession();
         loadOnlineFavorites();
         loadMemories();
     }
@@ -7566,6 +7670,7 @@ document.body.classList.add("auth-locked");
         if (response.ok && data.authenticated) {
             currentUser = data.user || null;
             authGeneration += 1;
+            applySessionData(data);
             showGallery();
             await initializeGallery();
         } else {

@@ -5,7 +5,7 @@ account_id = "04c5281fc4e0ea0858148a27ef1c6574"
 
 [vars]
 ALLOWED_GALLERY_EMAILS = "elvincemaranan@gmail.com, jewelleamaranto@gmail.com"
-ALLOWED_ORIGIN = "https://wahchachaps.github.io,http://localhost:8000,http://127.0.0.1:5500"
+ALLOWED_ORIGIN = "https://el-gallery-api.elvincemaranan.workers.dev,http://localhost:8000,http://127.0.0.1:5500"
 R2_PUBLIC_URL = "https://pub-5174c21311cd4e9ba7e73efff0ab077f.r2.dev"
 SUPABASE_URL = "https://oteqixxoitelcprfwfbe.supabase.co"
 
@@ -20,3 +20,8 @@ bucket_name = "el-gallery"
 [[kv_namespaces]]
 binding = "AUTH_RATE_LIMIT"
 id = "5990b54fa4e94f4d8737a6a3a75867fc"
+
+[assets]
+directory = "."
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
