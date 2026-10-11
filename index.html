@@ -21,10 +21,20 @@
 <body class="auth-locked">
 
     <section class="login-screen" id="loginScreen" aria-labelledby="loginTitle">
+        <div class="login-ambient login-ambient-left" aria-hidden="true"></div>
+        <div class="login-ambient login-ambient-right" aria-hidden="true"></div>
         <div class="login-card">
-            <p class="login-mark" aria-hidden="true">EL GALLERY</p>
-            <h1 id="loginTitle">A private collection<br><em>of our favorite moments.</em></h1>
+            <div class="login-card-top">
+                <p class="login-mark" aria-hidden="true">EL <span>GALLERY</span></p>
+                <p class="login-status"><span aria-hidden="true"></span>SECURE ENTRY</p>
+            </div>
+            <div class="login-heading">
+                <p class="login-kicker">A PRIVATE ARCHIVE</p>
+                <h1 id="loginTitle">A private collection<br><em>of our favorite moments.</em></h1>
+                <p class="login-intro">A quiet place for the memories, films, and letters we keep close.</p>
+            </div>
             <form id="loginForm" novalidate>
+                <div class="login-form-meta"><span>ENTER YOUR DETAILS</span><span>PRIVATE / 01</span></div>
                 <label class="login-field"><span>USERNAME</span><input id="loginUsername" name="username" type="text" autocomplete="username" required maxlength="80" placeholder="Enter username"></label>
                 <label class="login-field"><span>PASSWORD</span><span class="password-control"><input id="loginPassword" name="password" type="password" autocomplete="current-password" required maxlength="200" placeholder="Enter password"><button type="button" id="togglePasswordButton" aria-label="Show password" aria-pressed="false">◉</button></span></label>
                 <p id="loginError" class="login-error" role="alert" aria-live="polite"></p>
@@ -517,14 +527,22 @@
             <button type="button" class="modal-close" id="closeLetterEditorButton" aria-label="Close letter editor">×</button>
             <p class="eyebrow">A NOTE FOR US</p>
             <h2 id="letterEditorTitle">Write a letter.</h2>
+            <div class="letter-writing-toolbar" role="toolbar" aria-label="Letter style tools">
+                <label class="letter-style-select"><span>TYPE</span><select id="letterFontSelect" aria-label="Letter font"><option value="normal">Classic</option><option value="handwritten">Handwritten</option></select></label>
+                <div class="letter-ink-tools"><span>INK</span><button type="button" class="ink-choice is-selected" data-ink="black" aria-label="Black ink" aria-pressed="true"></button><button type="button" class="ink-choice" data-ink="navy" aria-label="Navy ink" aria-pressed="false"></button><button type="button" class="ink-choice" data-ink="burgundy" aria-label="Burgundy ink" aria-pressed="false"></button></div>
+                <div class="letter-paper-tools"><span>PAPER</span><button type="button" class="paper-choice is-selected" data-paper="lined" aria-pressed="true">LINED</button><button type="button" class="paper-choice" data-paper="plain" aria-pressed="false">PLAIN</button></div>
+                <button type="button" class="letter-preview-button" id="previewLetterButton">PREVIEW</button>
+            </div>
             <form id="letterForm" novalidate>
                 <div class="form-grid">
                     <label class="field"><span>Title</span><input id="letterTitleInput" name="title" maxlength="120" required placeholder="A little something..."></label>
                     <label class="field"><span>From</span><input id="letterSenderInput" name="sender" maxlength="80" required placeholder="Your name"></label>
-                    <label class="field"><span>To</span><input id="letterRecipientInput" name="recipient" maxlength="80" required placeholder="Their name"></label>
+                    <label class="field"><span>Dear</span><input id="letterRecipientInput" name="recipient" maxlength="80" required placeholder="Their name"></label>
                     <label class="field"><span>Letter date</span><input id="letterDateInput" name="letter_date" type="date" required></label>
                 </div>
                 <label class="field"><span>Message</span><textarea id="letterMessageInput" name="message" rows="12" maxlength="12000" required placeholder="Write from the heart..."></textarea><small class="letter-character-count" id="letterCharacterCount">0 / 12000</small></label>
+                <div class="letter-closing-fields"><label class="field"><span>Closing</span><input id="letterClosingInput" name="closing" maxlength="80" placeholder="With love,"></label><label class="field"><span>Signature</span><input id="letterSignatureInput" name="signature" maxlength="80" placeholder="Your name"></label></div>
+                <svg class="letter-editor-pen" viewBox="0 0 80 360" aria-hidden="true" focusable="false"><defs><linearGradient id="penMetal" x1="0" x2="1"><stop stop-color="#8b5b42"/><stop offset=".45" stop-color="#f4c49c"/><stop offset="1" stop-color="#6b3c30"/></linearGradient></defs><path d="M40 8 57 70 53 284 40 350 27 284 23 70Z" fill="#171013" stroke="url(#penMetal)" stroke-width="3"/><path d="M27 70h26M27 284h26" stroke="#dca277" stroke-width="5"/><path d="m40 8 10 38-10 23-10-23Z" fill="url(#penMetal)"/><path d="M40 350v-24" stroke="#f4c49c" stroke-width="3"/></svg>
                 <p class="letter-form-error" id="letterFormError" role="alert"></p>
                 <div class="letter-editor-actions">
                     <button type="button" class="memory-secondary-button" id="saveLetterDraftButton">SAVE DRAFT</button>
@@ -538,11 +556,13 @@
         <div class="modal-backdrop" data-close-letter-reader></div>
         <article class="letter-reader-dialog" role="dialog" aria-modal="true" aria-labelledby="letterReaderTitle">
             <button type="button" class="modal-close" id="closeLetterReaderButton" aria-label="Close letter">×</button>
-            <div class="letter-paper">
+            <div class="letter-paper" id="letterReaderPaper">
                 <p class="eyebrow" id="letterReaderStatus"></p>
                 <h2 id="letterReaderTitle"></h2>
                 <div class="letter-reader-meta"><span id="letterReaderFrom"></span><span id="letterReaderTo"></span><time id="letterReaderDate"></time></div>
                 <div class="letter-reader-message" id="letterReaderMessage"></div>
+                <div class="letter-reader-closing" id="letterReaderClosing"></div>
+                <div class="letter-reader-signature" id="letterReaderSignature"></div>
                 <div class="letter-reader-actions"><button type="button" class="memory-secondary-button" id="editLetterButton">EDIT</button><button type="button" class="delete-confirm-button" id="deleteLetterButton">DELETE</button></div>
             </div>
         </article>

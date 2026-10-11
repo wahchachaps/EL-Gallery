@@ -452,7 +452,15 @@ const LETTER_MAX = {
     title: 120,
     sender: 80,
     recipient: 80,
-    message: 12000
+    message: 12000,
+    closing: 80,
+    signature: 80
+};
+
+const LETTER_STYLES = {
+    font_style: new Set(["normal", "handwritten"]),
+    ink_color: new Set(["black", "navy", "burgundy"]),
+    paper_style: new Set(["lined", "plain"])
 };
 
 function decodeTokenPart(value) {
@@ -596,6 +604,23 @@ function validateLetterInput(input) {
         data[field] = input[field].trim();
     }
 
+    for (const field of ["closing", "signature"]) {
+        if (input[field] !== undefined && typeof input[field] !== "string") {
+            return { error: `${field} must be a string.` };
+        }
+        if ((input[field] || "").length > LETTER_MAX[field]) {
+            return { error: `${field} is too long.` };
+        }
+        data[field] = (input[field] || "").trim();
+    }
+
+    for (const field of Object.keys(LETTER_STYLES)) {
+        if (input[field] !== undefined && !LETTER_STYLES[field].has(input[field])) {
+            return { error: `${field} has an unsupported value.` };
+        }
+        data[field] = input[field] || (field === "font_style" ? "normal" : field === "ink_color" ? "black" : "lined");
+    }
+
     if (
         typeof input.letter_date !== "string" ||
         !validDate(input.letter_date)
@@ -646,7 +671,7 @@ async function handleLetters(request, env, url) {
     if (collection && request.method === "GET") {
         const rows = await supabase(
             env,
-            `letters?${scope}&select=id,title,sender,recipient,letter_date,message,is_draft,created_at,updated_at&order=letter_date.desc,updated_at.desc`
+            `letters?${scope}&select=id,title,sender,recipient,letter_date,message,is_draft,font_style,ink_color,paper_style,closing,signature,created_at,updated_at&order=letter_date.desc,updated_at.desc`
         );
 
         return json({ letters: rows });

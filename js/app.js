@@ -589,6 +589,14 @@ const letterRecipientInput = document.getElementById("letterRecipientInput");
 const letterDateInput = document.getElementById("letterDateInput");
 const letterMessageInput = document.getElementById("letterMessageInput");
 const letterCharacterCount = document.getElementById("letterCharacterCount");
+const letterClosingInput = document.getElementById("letterClosingInput");
+const letterSignatureInput = document.getElementById("letterSignatureInput");
+const letterFontSelect = document.getElementById("letterFontSelect");
+const letterFormPaper = document.getElementById("letterForm");
+const letterReaderPaper = document.getElementById("letterReaderPaper");
+const letterReaderClosing = document.getElementById("letterReaderClosing");
+const letterReaderSignature = document.getElementById("letterReaderSignature");
+const previewLetterButton = document.getElementById("previewLetterButton");
 const letterFormError = document.getElementById("letterFormError");
 const saveLetterDraftButton = document.getElementById("saveLetterDraftButton");
 const saveLetterButton = document.getElementById("saveLetterButton");
@@ -631,6 +639,11 @@ function normalizeLetter(letter) {
         recipient: letter.recipient || "",
         letterDate: letter.letterDate || letter.letter_date || "",
         message: letter.message || "",
+        fontStyle: letter.fontStyle || letter.font_style || "normal",
+        inkColor: letter.inkColor || letter.ink_color || "black",
+        paperStyle: letter.paperStyle || letter.paper_style || "lined",
+        closing: letter.closing || "",
+        signature: letter.signature || "",
         isDraft: Boolean(letter.isDraft ?? letter.is_draft ?? letter.status === "draft"),
         createdAt: letter.createdAt || letter.created_at || "",
         updatedAt: letter.updatedAt || letter.updated_at || ""
@@ -709,12 +722,34 @@ function openLetters() {
 }
 
 function formLetter() {
-    return { title: letterTitleInput.value.trim(), sender: letterSenderInput.value.trim(), recipient: letterRecipientInput.value.trim(), letter_date: letterDateInput.value, message: letterMessageInput.value };
+    return { title: letterTitleInput.value.trim(), sender: letterSenderInput.value.trim(), recipient: letterRecipientInput.value.trim(), letter_date: letterDateInput.value, message: letterMessageInput.value, font_style: letterFontSelect.value, ink_color: selectedLetterInk, paper_style: selectedLetterPaper, closing: letterClosingInput.value.trim(), signature: letterSignatureInput.value.trim() };
 }
 
 function updateLetterDirtyState() {
     letterCharacterCount.textContent = `${letterMessageInput.value.length} / 12000`;
-    letterEditorDirty = Object.values(formLetter()).some(Boolean);
+    letterEditorDirty = Object.entries(formLetter()).some(([key, value]) => !["font_style", "ink_color", "paper_style"].includes(key) && Boolean(value));
+}
+
+let selectedLetterInk = "black";
+let selectedLetterPaper = "lined";
+
+function setLetterStyle(fontStyle = "normal", inkColor = "black", paperStyle = "lined") {
+    selectedLetterInk = ["black", "navy", "burgundy"].includes(inkColor) ? inkColor : "black";
+    selectedLetterPaper = ["lined", "plain"].includes(paperStyle) ? paperStyle : "lined";
+    letterFontSelect.value = ["normal", "handwritten"].includes(fontStyle) ? fontStyle : "normal";
+    document.querySelectorAll(".ink-choice").forEach(button => {
+        const selected = button.dataset.ink === selectedLetterInk;
+        button.classList.toggle("is-selected", selected);
+        button.setAttribute("aria-pressed", String(selected));
+    });
+    document.querySelectorAll(".paper-choice").forEach(button => {
+        const selected = button.dataset.paper === selectedLetterPaper;
+        button.classList.toggle("is-selected", selected);
+        button.setAttribute("aria-pressed", String(selected));
+    });
+    letterFormPaper.dataset.font = letterFontSelect.value;
+    letterFormPaper.dataset.ink = selectedLetterInk;
+    letterFormPaper.dataset.paperStyle = selectedLetterPaper;
 }
 
 function openLetterEditor(letter = null) {
@@ -725,6 +760,9 @@ function openLetterEditor(letter = null) {
     letterRecipientInput.value = letter?.recipient || "";
     letterDateInput.value = letter?.letterDate || dateToInputValue(new Date());
     letterMessageInput.value = letter?.message || "";
+    letterClosingInput.value = letter?.closing || "";
+    letterSignatureInput.value = letter?.signature || letter?.sender || "";
+    setLetterStyle(letter?.fontStyle, letter?.inkColor, letter?.paperStyle);
     letterFormError.textContent = "";
     updateLetterDirtyState();
     openModal(letterEditorModal);
@@ -744,7 +782,28 @@ function showLetter(letter) {
     letterReaderTo.textContent = `To ${letter.recipient}`;
     letterReaderDate.textContent = letterDateLabel(letter.letterDate);
     letterReaderMessage.textContent = letter.message;
+    letterReaderClosing.textContent = letter.closing || "";
+    letterReaderSignature.textContent = letter.signature || letter.sender || "";
+    letterReaderClosing.hidden = !letter.closing;
+    letterReaderSignature.hidden = !letter.signature && !letter.sender;
+    editLetterButton.textContent = letter.isPreview ? "BACK TO EDITOR" : "EDIT";
+    deleteLetterButton.hidden = Boolean(letter.isPreview);
+    letterReaderPaper.dataset.font = letter.fontStyle;
+    letterReaderPaper.dataset.ink = letter.inkColor;
+    letterReaderPaper.dataset.paperStyle = letter.paperStyle;
     openModal(letterReaderModal);
+}
+
+function previewLetter() {
+    const draft = normalizeLetter({ ...formLetter(), id: null, is_draft: true });
+    draft.isPreview = true;
+    showLetter(draft);
+}
+
+function closeLetterReader() {
+    const wasPreview = Boolean(activeLetter?.isPreview);
+    closeModal(letterReaderModal);
+    if (wasPreview) openModal(letterEditorModal);
 }
 
 async function saveLetter(isDraft) {
@@ -762,6 +821,9 @@ async function saveLetter(isDraft) {
         letters = [saved, ...letters.filter(letter => letter.id !== saved.id)];
         closeModal(letterEditorModal);
         if (lettersModal.classList.contains("open")) renderLetters(); else openLetters();
+        lettersModal.classList.remove("letter-save-success");
+        requestAnimationFrame(() => lettersModal.classList.add("letter-save-success"));
+        window.setTimeout(() => lettersModal.classList.remove("letter-save-success"), 700);
         showToast(isDraft ? "Draft saved" : "Letter saved");
     } catch (error) {
         letterFormError.textContent = error.message;
@@ -3638,14 +3700,26 @@ lettersButton.addEventListener("click", () => {
 writeLetterButton.addEventListener("click", () => openLetterEditor());
 closeLettersButton.addEventListener("click", () => closeModal(lettersModal));
 closeLetterEditorButton.addEventListener("click", () => closeLetterEditor());
-closeLetterReaderButton.addEventListener("click", () => closeModal(letterReaderModal));
+closeLetterReaderButton.addEventListener("click", closeLetterReader);
 closeLetterDeleteButton.addEventListener("click", () => closeModal(letterDeleteModal));
 cancelLetterDeleteButton.addEventListener("click", () => closeModal(letterDeleteModal));
 confirmLetterDeleteButton.addEventListener("click", deleteActiveLetter);
-editLetterButton.addEventListener("click", () => { closeModal(letterReaderModal, false); openLetterEditor(activeLetter); });
+editLetterButton.addEventListener("click", () => {
+    if (activeLetter?.isPreview) {
+        closeModal(letterReaderModal, false);
+        openModal(letterEditorModal);
+        return;
+    }
+    closeModal(letterReaderModal, false);
+    openLetterEditor(activeLetter);
+});
 deleteLetterButton.addEventListener("click", () => { closeModal(letterReaderModal, false); openModal(letterDeleteModal); });
 lettersSearchInput.addEventListener("input", renderLetters);
 letterForm.addEventListener("input", updateLetterDirtyState);
+letterFontSelect.addEventListener("change", () => { setLetterStyle(letterFontSelect.value, selectedLetterInk, selectedLetterPaper); updateLetterDirtyState(); });
+document.querySelectorAll(".ink-choice").forEach(button => button.addEventListener("click", () => { setLetterStyle(letterFontSelect.value, button.dataset.ink, selectedLetterPaper); updateLetterDirtyState(); }));
+document.querySelectorAll(".paper-choice").forEach(button => button.addEventListener("click", () => { setLetterStyle(letterFontSelect.value, selectedLetterInk, button.dataset.paper); updateLetterDirtyState(); }));
+previewLetterButton.addEventListener("click", previewLetter);
 saveLetterDraftButton.addEventListener("click", () => saveLetter(true));
 letterForm.addEventListener("submit", event => { event.preventDefault(); saveLetter(false); });
 lettersGrid.addEventListener("click", event => {
@@ -3656,7 +3730,7 @@ lettersGrid.addEventListener("click", event => {
 
 document.querySelectorAll("[data-close-letters]").forEach(element => element.addEventListener("click", () => closeModal(lettersModal)));
 document.querySelectorAll("[data-close-letter-editor]").forEach(element => element.addEventListener("click", () => closeLetterEditor()));
-document.querySelectorAll("[data-close-letter-reader]").forEach(element => element.addEventListener("click", () => closeModal(letterReaderModal)));
+document.querySelectorAll("[data-close-letter-reader]").forEach(element => element.addEventListener("click", closeLetterReader));
 document.querySelectorAll("[data-close-letter-delete]").forEach(element => element.addEventListener("click", () => closeModal(letterDeleteModal)));
 
 
