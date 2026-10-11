@@ -598,6 +598,7 @@ const letterReaderClosing = document.getElementById("letterReaderClosing");
 const letterReaderSignature = document.getElementById("letterReaderSignature");
 const previewLetterButton = document.getElementById("previewLetterButton");
 const letterFormError = document.getElementById("letterFormError");
+const retryLetterSaveButton = document.getElementById("retryLetterSaveButton");
 const saveLetterDraftButton = document.getElementById("saveLetterDraftButton");
 const saveLetterButton = document.getElementById("saveLetterButton");
 const letterReaderModal = document.getElementById("letterReaderModal");
@@ -625,6 +626,8 @@ let editingLetterId = null;
 let letterEditorDirty = false;
 let isSavingLetter = false;
 let isDeletingLetter = false;
+let lastLetterSaveWasDraft = false;
+let letterMessageSelection = { start: 0, end: 0 };
 
 
 /* =========================================================
@@ -727,13 +730,22 @@ function formLetter() {
 
 function updateLetterDirtyState() {
     letterCharacterCount.textContent = `${letterMessageInput.value.length} / 12000`;
+    letterMessageInput.style.height = "auto";
+    letterMessageInput.style.height = `${Math.max(letterMessageInput.scrollHeight, 330)}px`;
     letterEditorDirty = Object.entries(formLetter()).some(([key, value]) => !["font_style", "ink_color", "paper_style"].includes(key) && Boolean(value));
 }
 
 let selectedLetterInk = "black";
 let selectedLetterPaper = "lined";
 
-function setLetterStyle(fontStyle = "normal", inkColor = "black", paperStyle = "lined") {
+function rememberLetterSelection() {
+    letterMessageSelection = {
+        start: letterMessageInput.selectionStart ?? 0,
+        end: letterMessageInput.selectionEnd ?? 0
+    };
+}
+
+function setLetterStyle(fontStyle = "normal", inkColor = "black", paperStyle = "lined", restoreCursor = false) {
     selectedLetterInk = ["black", "navy", "burgundy"].includes(inkColor) ? inkColor : "black";
     selectedLetterPaper = ["lined", "plain"].includes(paperStyle) ? paperStyle : "lined";
     letterFontSelect.value = ["normal", "handwritten"].includes(fontStyle) ? fontStyle : "normal";
@@ -750,6 +762,12 @@ function setLetterStyle(fontStyle = "normal", inkColor = "black", paperStyle = "
     letterFormPaper.dataset.font = letterFontSelect.value;
     letterFormPaper.dataset.ink = selectedLetterInk;
     letterFormPaper.dataset.paperStyle = selectedLetterPaper;
+    if (restoreCursor) {
+        requestAnimationFrame(() => {
+            letterMessageInput.focus({ preventScroll: true });
+            letterMessageInput.setSelectionRange(letterMessageSelection.start, letterMessageSelection.end);
+        });
+    }
 }
 
 function openLetterEditor(letter = null) {
@@ -764,6 +782,7 @@ function openLetterEditor(letter = null) {
     letterSignatureInput.value = letter?.signature || letter?.sender || "";
     setLetterStyle(letter?.fontStyle, letter?.inkColor, letter?.paperStyle);
     letterFormError.textContent = "";
+    retryLetterSaveButton.hidden = true;
     updateLetterDirtyState();
     openModal(letterEditorModal);
 }
@@ -808,6 +827,7 @@ function closeLetterReader() {
 
 async function saveLetter(isDraft) {
     if (isSavingLetter) return;
+    lastLetterSaveWasDraft = isDraft;
     const payload = formLetter();
     const missing = ["title", "sender", "recipient", "letter_date", "message"].filter(key => !payload[key]);
     if (missing.length) { letterFormError.textContent = "Please complete every field before saving."; return; }
@@ -824,9 +844,11 @@ async function saveLetter(isDraft) {
         lettersModal.classList.remove("letter-save-success");
         requestAnimationFrame(() => lettersModal.classList.add("letter-save-success"));
         window.setTimeout(() => lettersModal.classList.remove("letter-save-success"), 700);
+        retryLetterSaveButton.hidden = true;
         showToast(isDraft ? "Draft saved" : "Letter saved");
     } catch (error) {
         letterFormError.textContent = error.message;
+        retryLetterSaveButton.hidden = false;
     } finally {
         isSavingLetter = false;
         saveLetterDraftButton.disabled = false; saveLetterButton.disabled = false;
@@ -3715,11 +3737,15 @@ editLetterButton.addEventListener("click", () => {
 });
 deleteLetterButton.addEventListener("click", () => { closeModal(letterReaderModal, false); openModal(letterDeleteModal); });
 lettersSearchInput.addEventListener("input", renderLetters);
-letterForm.addEventListener("input", updateLetterDirtyState);
-letterFontSelect.addEventListener("change", () => { setLetterStyle(letterFontSelect.value, selectedLetterInk, selectedLetterPaper); updateLetterDirtyState(); });
-document.querySelectorAll(".ink-choice").forEach(button => button.addEventListener("click", () => { setLetterStyle(letterFontSelect.value, button.dataset.ink, selectedLetterPaper); updateLetterDirtyState(); }));
-document.querySelectorAll(".paper-choice").forEach(button => button.addEventListener("click", () => { setLetterStyle(letterFontSelect.value, selectedLetterInk, button.dataset.paper); updateLetterDirtyState(); }));
+letterForm.addEventListener("input", () => { rememberLetterSelection(); updateLetterDirtyState(); });
+letterFontSelect.addEventListener("change", () => { setLetterStyle(letterFontSelect.value, selectedLetterInk, selectedLetterPaper, true); updateLetterDirtyState(); });
+document.querySelectorAll(".ink-choice").forEach(button => button.addEventListener("click", () => { setLetterStyle(letterFontSelect.value, button.dataset.ink, selectedLetterPaper, true); updateLetterDirtyState(); }));
+document.querySelectorAll(".paper-choice").forEach(button => button.addEventListener("click", () => { setLetterStyle(letterFontSelect.value, selectedLetterInk, button.dataset.paper, true); updateLetterDirtyState(); }));
+letterMessageInput.addEventListener("select", rememberLetterSelection);
+letterMessageInput.addEventListener("click", rememberLetterSelection);
+letterMessageInput.addEventListener("keyup", rememberLetterSelection);
 previewLetterButton.addEventListener("click", previewLetter);
+retryLetterSaveButton.addEventListener("click", () => saveLetter(lastLetterSaveWasDraft));
 saveLetterDraftButton.addEventListener("click", () => saveLetter(true));
 letterForm.addEventListener("submit", event => { event.preventDefault(); saveLetter(false); });
 lettersGrid.addEventListener("click", event => {

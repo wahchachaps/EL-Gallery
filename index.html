@@ -543,7 +543,7 @@
                 <label class="field"><span>Message</span><textarea id="letterMessageInput" name="message" rows="12" maxlength="12000" required placeholder="Write from the heart..."></textarea><small class="letter-character-count" id="letterCharacterCount">0 / 12000</small></label>
                 <div class="letter-closing-fields"><label class="field"><span>Closing</span><input id="letterClosingInput" name="closing" maxlength="80" placeholder="With love,"></label><label class="field"><span>Signature</span><input id="letterSignatureInput" name="signature" maxlength="80" placeholder="Your name"></label></div>
                 <svg class="letter-editor-pen" viewBox="0 0 80 360" aria-hidden="true" focusable="false"><defs><linearGradient id="penMetal" x1="0" x2="1"><stop stop-color="#8b5b42"/><stop offset=".45" stop-color="#f4c49c"/><stop offset="1" stop-color="#6b3c30"/></linearGradient></defs><path d="M40 8 57 70 53 284 40 350 27 284 23 70Z" fill="#171013" stroke="url(#penMetal)" stroke-width="3"/><path d="M27 70h26M27 284h26" stroke="#dca277" stroke-width="5"/><path d="m40 8 10 38-10 23-10-23Z" fill="url(#penMetal)"/><path d="M40 350v-24" stroke="#f4c49c" stroke-width="3"/></svg>
-                <p class="letter-form-error" id="letterFormError" role="alert"></p>
+                <p class="letter-form-error" id="letterFormError" role="alert"></p><button type="button" class="letter-save-retry" id="retryLetterSaveButton" hidden>TRY AGAIN</button>
                 <div class="letter-editor-actions">
                     <button type="button" class="memory-secondary-button" id="saveLetterDraftButton">SAVE DRAFT</button>
                     <button type="submit" class="memory-primary-button" id="saveLetterButton">SAVE LETTER <span>→</span></button>
