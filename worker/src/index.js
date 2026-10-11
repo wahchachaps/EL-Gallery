@@ -11,6 +11,10 @@ const SESSION_COOKIE = "__Host-el_gallery_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const MAX_LOGIN_FAILURES = 5;
 const LOGIN_WINDOW_SECONDS = 15 * 60;
+const ACCOUNTS = {
+    husbun: { username: "husbun", displayName: "Husbun", secret: "GALLERY_LOGIN_PASSWORD" },
+    wifebun: { username: "wifebun", displayName: "Wifebun", secret: "GALLERY_WIFEBUN_PASSWORD" }
+};
 
 export default {
     async fetch(request, env) {
@@ -30,35 +34,12 @@ export default {
                 response = await handleAuth(request, env, url);
             } else if (!isAllowedOrigin(request, env)) {
                 response = json({ error: "Forbidden." }, 403);
-            } else if (!await sessionAuthorized(request, env)) {
-                response = json({ error: "Unauthorized." }, 401);
-            } else if (
-                url.pathname === "/api/favorites" ||
-                url.pathname.startsWith("/api/favorites/")
-            ) {
-                response = await handleFavorites(request, env, url);
-            } else if (
-                url.pathname === "/api/letters" ||
-                url.pathname.startsWith("/api/letters/")
-            ) {
-                response = await handleLetters(request, env, url);
-            } else if (
-                url.pathname === "/api/memories" &&
-                request.method === "GET"
-            ) {
-                response = await listMemories(request, env);
-            } else if (url.pathname === "/api/upload" && request.method === "POST") {
-                response = await uploadMemory(request, env);
-            } else if (url.pathname.startsWith("/api/media/") && ["GET", "HEAD"].includes(request.method)) {
-                response = await serveMedia(request, env, url.pathname.slice("/api/media/".length));
             } else {
-                const match = url.pathname.match(/^\/api\/memories\/([^/]+)$/);
-                if (match && request.method === "PATCH") {
-                    response = await editMemory(request, env, decodeURIComponent(match[1]));
-                } else if (match && request.method === "DELETE") {
-                    response = await deleteMemory(request, env, decodeURIComponent(match[1]));
+                const session = await sessionAuthorized(request, env);
+                if (!session.authenticated) {
+                    response = json({ error: "Unauthorized." }, 401);
                 } else {
-                    response = json({ error: "Not found." }, 404);
+                    response = await routeProtectedRequest(request, env, url, session.account);
                 }
             }
 
@@ -66,12 +47,36 @@ export default {
             return response;
         } catch (error) {
             console.error(error);
-            const response = json({ error: "The request could not be completed." }, 500);
+            const response = error instanceof ServiceUnavailableError
+                ? json({ error: "The gallery is temporarily unavailable." }, 503)
+                : json({ error: "The request could not be completed." }, 500);
             cors.forEach((value, key) => response.headers.set(key, value));
             return response;
         }
     }
 };
+
+async function routeProtectedRequest(request, env, url, account) {
+    if (url.pathname === "/api/favorites" || url.pathname.startsWith("/api/favorites/")) {
+        return handleFavorites(request, env, url, account);
+    }
+    if (url.pathname === "/api/letters" || url.pathname.startsWith("/api/letters/")) {
+        return handleLetters(request, env, url, account);
+    }
+    if (url.pathname === "/api/memories" && request.method === "GET") {
+        return listMemories(request, env);
+    }
+    if (url.pathname === "/api/upload" && request.method === "POST") {
+        return uploadMemory(request, env, account);
+    }
+    if (url.pathname.startsWith("/api/media/") && ["GET", "HEAD"].includes(request.method)) {
+        return serveMedia(request, env, url.pathname.slice("/api/media/".length));
+    }
+    const match = url.pathname.match(/^\/api\/memories\/([^/]+)$/);
+    if (match && request.method === "PATCH") return editMemory(request, env, decodeURIComponent(match[1]), account);
+    if (match && request.method === "DELETE") return deleteMemory(request, env, decodeURIComponent(match[1]));
+    return json({ error: "Not found." }, 404);
+}
 
 function corsHeaders(request, env) {
     const configured = (env.ALLOWED_ORIGIN || "https://wahchachaps.github.io")
@@ -147,6 +152,9 @@ function serializeMemory(row, request) {
         groupId: row.group_id ?? null,
         groupOrder: Number.isInteger(row.group_order) ? row.group_order : null,
         privateNote: row.private_note ?? null
+        ,uploadedBy: row.uploaded_by ?? null
+        ,editedBy: row.edited_by ?? null
+        ,editedAt: row.edited_at ?? null
     };
 }
 
@@ -191,11 +199,10 @@ function randomToken() {
     return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-async function passwordMatches(input, env) {
-    if (typeof env.GALLERY_LOGIN_PASSWORD !== "string" || !env.GALLERY_LOGIN_PASSWORD) return false;
+async function passwordMatches(input, configured) {
+    if (typeof configured !== "string" || !configured) return false;
 
     const inputHash = await sha256Hex(input);
-    const configured = env.GALLERY_LOGIN_PASSWORD;
     const configuredVerifier = configured.match(/^sha256:([0-9a-f]{64})$/i)?.[1];
     const candidateHashes = configuredVerifier
         ? [configuredVerifier.toLowerCase()]
@@ -217,13 +224,26 @@ async function passwordMatches(input, env) {
 
 async function sessionAuthorized(request, env) {
     const token = requestCookie(request, SESSION_COOKIE);
-    if (!token) return false;
+    if (!token) return { authenticated: false, reason: "missing" };
     try {
         const hash = await sha256Hex(token);
-        const rows = await supabase(env, `gallery_sessions?token_hash=eq.${hash}&revoked_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id&limit=1`);
-        return rows.length > 0;
-    } catch {
-        return false;
+        const rows = await supabase(env, `gallery_sessions?token_hash=eq.${hash}&revoked_at=is.null&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,username,account_username,display_name&limit=1`);
+        if (!rows.length) return { authenticated: false, reason: "expired" };
+        const storedUsername = rows[0].account_username || rows[0].username;
+        const username = storedUsername === "elvince" ? "husbun" : storedUsername;
+        const account = ACCOUNTS[username];
+        return account
+            ? { authenticated: true, reason: "valid", account }
+            : { authenticated: false, reason: "legacy-unknown-account" };
+    } catch (error) {
+        throw new ServiceUnavailableError("Session validation is temporarily unavailable.");
+    }
+}
+
+class ServiceUnavailableError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = "ServiceUnavailableError";
     }
 }
 
@@ -244,7 +264,11 @@ function sessionCookie(token, maxAge = SESSION_TTL_SECONDS) {
 
 async function handleAuth(request, env, url) {
     if (url.pathname === "/api/auth/me" && request.method === "GET") {
-        return json({ authenticated: await sessionAuthorized(request, env) });
+        const session = await sessionAuthorized(request, env);
+        return json({
+            authenticated: session.authenticated,
+            ...(session.account ? { user: { username: session.account.username, displayName: session.account.displayName } } : {})
+        });
     }
 
     if (url.pathname === "/api/auth/logout" && request.method === "POST") {
@@ -267,7 +291,7 @@ async function handleAuth(request, env, url) {
     if (url.pathname !== "/api/auth/login" || request.method !== "POST") {
         return json({ error: "Method not allowed." }, 405);
     }
-    if (!env.GALLERY_LOGIN_PASSWORD || !env.SUPABASE_URL || !(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY)) {
+    if (!env.GALLERY_LOGIN_PASSWORD || !env.GALLERY_WIFEBUN_PASSWORD || !env.SUPABASE_URL || !(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY)) {
         return json({ error: "Authentication is not configured." }, 503);
     }
     const limited = await loginRateLimit(request, env, false);
@@ -275,7 +299,8 @@ async function handleAuth(request, env, url) {
     const input = await request.json().catch(() => null);
     const username = typeof input?.username === "string" ? input.username.trim() : "";
     const password = typeof input?.password === "string" ? input.password : "";
-    if (username !== "elvince" || !(await passwordMatches(password, env))) {
+    const account = ACCOUNTS[username];
+    if (!account || !(await passwordMatches(password, env[account.secret]))) {
         await loginRateLimit(request, env, true);
         return json({ error: "Incorrect username or password." }, 401);
     }
@@ -284,9 +309,9 @@ async function handleAuth(request, env, url) {
     await supabase(env, "gallery_sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
-        body: JSON.stringify({ token_hash: await sha256Hex(token), username, expires_at: expiresAt })
+        body: JSON.stringify({ token_hash: await sha256Hex(token), username, account_username: account.username, display_name: account.displayName, expires_at: expiresAt })
     });
-    return json({ ok: true, username }, 200, { "Set-Cookie": sessionCookie(token) });
+    return json({ ok: true, user: { username: account.username, displayName: account.displayName } }, 200, { "Set-Cookie": sessionCookie(token) });
 }
 
 const selectRows = (env, query) =>
@@ -297,7 +322,7 @@ async function listMemories(request, env) {
     return json({ memories: rows.map(row => serializeMemory(row, request)) });
 }
 
-async function uploadMemory(request, env) {
+async function uploadMemory(request, env, account) {
     const contentLength = Number(request.headers.get("Content-Length") || 0);
     if (contentLength > MAX_FILE_SIZE + 1024 * 1024) {
         return json({ error: "Each file must be 100 MB or smaller." }, 413);
@@ -359,6 +384,7 @@ async function uploadMemory(request, env) {
                 group_id: groupId,
                 group_order: groupOrder,
                 private_note: privateNote.value
+                ,uploaded_by: account.username
             })
         });
         return json({ memory: serializeMemory(rows[0], request) }, 201);
@@ -389,7 +415,7 @@ async function serveMedia(request, env, encodedKey) {
     });
 }
 
-async function editMemory(request, env, id) {
+async function editMemory(request, env, id, account) {
     const body = await request.json().catch(() => null);
     if (!body || !validDate(String(body.date || ""))) return json({ error: "A valid date is required." }, 400);
     if (typeof body.caption !== "string") return json({ error: "Caption must be a string." }, 400);
@@ -409,6 +435,8 @@ async function editMemory(request, env, id) {
         : `id=eq.${encodeURIComponent(id)}`;
     const changes = { caption, memory_date: body.date };
     if (hasPrivateNote) changes.private_note = privateNote.value;
+    changes.edited_by = account.username;
+    changes.edited_at = new Date().toISOString();
 
     const rows = await supabase(env, `memories?${filter}`, {
         method: "PATCH",
@@ -459,7 +487,7 @@ async function deleteMemory(request, env, id) {
     return json({ success: true });
 }
 
-async function handleFavorites(request, env, url) {
+async function handleFavorites(request, env, url, account) {
     if (
         !env.SUPABASE_URL ||
         !(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY)
@@ -476,7 +504,7 @@ async function handleFavorites(request, env, url) {
         return json({ error: "Invalid memory ID." }, 400);
     }
 
-    const scope = "gallery_scope=eq.private-gallery";
+    const scope = `gallery_scope=eq.private-gallery&account_username=eq.${encodeURIComponent(account.username)}`;
 
     if (collection && request.method === "GET") {
         const rows = await supabase(
@@ -503,6 +531,7 @@ async function handleFavorites(request, env, url) {
             },
             body: JSON.stringify({
                 gallery_scope: "private-gallery",
+                account_username: account.username,
                 memory_id: input.memory_id
             })
         });
@@ -718,7 +747,7 @@ function validateLetterInput(input) {
     return { data };
 }
 
-async function handleLetters(request, env, url) {
+async function handleLetters(request, env, url, account) {
     if (
         !env.SUPABASE_URL ||
         !(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY)
@@ -749,10 +778,10 @@ async function handleLetters(request, env, url) {
     if (collection && request.method === "GET") {
         const rows = await supabase(
             env,
-            `letters?${scope}&select=id,title,sender,recipient,letter_date,message,is_draft,font_style,ink_color,paper_style,closing,signature,created_at,updated_at&order=letter_date.desc,updated_at.desc`
+            `letters?${scope}&select=id,title,sender,recipient,letter_date,message,is_draft,font_style,ink_color,paper_style,closing,signature,created_at,updated_at,owner_username,author_username&order=letter_date.desc,updated_at.desc`
         );
 
-        return json({ letters: rows });
+        return json({ letters: rows.filter(row => !row.is_draft || row.owner_username === account.username) });
     }
 
     if (
@@ -769,6 +798,13 @@ async function handleLetters(request, env, url) {
 
         const creating = collection;
 
+        if (!creating) {
+            const existing = await supabase(env, `letters?id=eq.${id}&${scope}&select=id,is_draft,owner_username&limit=1`);
+            if (!existing.length || (existing[0].is_draft && existing[0].owner_username !== account.username)) {
+                return json({ error: "Letter not found." }, 404);
+            }
+        }
+
         const path = creating
             ? "letters"
             : `letters?id=eq.${id}&${scope}`;
@@ -776,9 +812,14 @@ async function handleLetters(request, env, url) {
         const body = creating
             ? {
                 ...checked.data,
-                gallery_scope: "private-gallery"
+                gallery_scope: "private-gallery",
+                owner_username: checked.data.is_draft ? account.username : null,
+                author_username: account.username
             }
-            : checked.data;
+            : {
+                ...checked.data,
+                owner_username: checked.data.is_draft ? account.username : null
+            };
 
         const rows = await supabase(env, path, {
             method: creating ? "POST" : "PATCH",
@@ -800,6 +841,10 @@ async function handleLetters(request, env, url) {
     }
 
     if (id && request.method === "DELETE") {
+        const existing = await supabase(env, `letters?id=eq.${id}&${scope}&select=id,is_draft,owner_username&limit=1`);
+        if (!existing.length || (existing[0].is_draft && existing[0].owner_username !== account.username)) {
+            return json({ error: "Letter not found." }, 404);
+        }
         const rows = await supabase(
             env,
             `letters?id=eq.${id}&${scope}`,

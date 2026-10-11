@@ -97,6 +97,8 @@
 
         <div class="nav-actions">
 
+            <span class="account-indicator" id="accountIndicator" aria-live="polite"></span>
+
             <button
                 class="logout-button"
                 id="logoutButton"
@@ -409,6 +411,11 @@
                         >
                             JANUARY 2026
                         </p>
+
+                        <div class="viewer-attribution" id="viewerAttribution" hidden>
+                            <span><b>UPLOADED BY</b><strong id="viewerUploadedBy"></strong></span>
+                            <span id="viewerEditedByRow"><b>LAST EDITED BY</b><strong id="viewerEditedBy"></strong></span>
+                        </div>
 
                         <div
                             class="viewer-set-context"

@@ -3,8 +3,9 @@
    ========================================================= */
 
 
-const API_URL =
-    "https://el-gallery-api.elvincemaranan.workers.dev";
+const API_URL = ["localhost", "127.0.0.1"].includes(window.location.hostname)
+    ? "http://127.0.0.1:8787"
+    : "https://el-gallery-api.elvincemaranan.workers.dev";
 
 const loginScreen = document.getElementById("loginScreen");
 const loginForm = document.getElementById("loginForm");
@@ -14,20 +15,48 @@ const loginError = document.getElementById("loginError");
 const loginSubmitButton = document.getElementById("loginSubmitButton");
 const togglePasswordButton = document.getElementById("togglePasswordButton");
 const logoutButton = document.getElementById("logoutButton");
+const accountIndicator = document.getElementById("accountIndicator");
+const viewerAttribution = document.getElementById("viewerAttribution");
+const viewerUploadedBy = document.getElementById("viewerUploadedBy");
+const viewerEditedBy = document.getElementById("viewerEditedBy");
+const viewerEditedByRow = document.getElementById("viewerEditedByRow");
 
 let isAuthenticated = false;
 let authRedirecting = false;
+let authGeneration = 0;
+let galleryInitializationPromise = null;
+let memoriesRequestVersion = 0;
+let currentUser = null;
 
 async function apiFetch(input, options = {}) {
+    const requestGeneration = authGeneration;
     const response = await fetch(input, {
         credentials: "include",
         cache: "no-store",
         ...options
     });
     if (response.status === 401 && !String(input).includes("/api/auth/")) {
-        handleSessionExpired();
+        confirmSessionExpired(requestGeneration);
     }
     return response;
+}
+
+async function confirmSessionExpired(requestGeneration) {
+    if (!isAuthenticated || requestGeneration !== authGeneration || authRedirecting) return;
+    try {
+        const response = await fetch(`${API_URL}/api/auth/me`, {
+            credentials: "include",
+            cache: "no-store"
+        });
+        const data = await response.json().catch(() => ({}));
+        if (requestGeneration !== authGeneration || !isAuthenticated) return;
+        if (response.ok && data.authenticated) return;
+        if (response.status === 401 && data.authenticated === false) {
+            handleSessionExpired();
+        }
+    } catch (error) {
+        console.warn("Could not confirm session state after a 401:", error);
+    }
 }
     
 const CURRENT_YEAR = 2026;
@@ -111,7 +140,7 @@ const MONTH_NOTES = [
 let memories = [];
 
 const FAVORITES_STORAGE_KEY = "el-gallery-favorites";
-const FAVORITES_MIGRATION_KEY = "el-gallery-favorites-online-migrated:shared-gallery";
+const FAVORITES_MIGRATION_KEY = "el-gallery-favorites-online-migrated";
 let favoriteIds = new Set();
 let favoritesLoaded = false;
 let favoritesLoading = false;
@@ -671,6 +700,8 @@ function normalizeLetter(letter) {
         closing: letter.closing || "",
         signature: letter.signature || "",
         isDraft: Boolean(letter.isDraft ?? letter.is_draft ?? letter.status === "draft"),
+        ownerUsername: letter.ownerUsername || letter.owner_username || null,
+        authorUsername: letter.authorUsername || letter.author_username || null,
         createdAt: letter.createdAt || letter.created_at || "",
         updatedAt: letter.updatedAt || letter.updated_at || ""
     };
@@ -1089,6 +1120,9 @@ function normalizeMemory(memory) {
                 ? memory.group_order
                 : null,
         privateNote: memory.privateNote ?? memory.private_note ?? null
+        ,uploadedBy: memory.uploadedBy ?? memory.uploaded_by ?? null
+        ,editedBy: memory.editedBy ?? memory.edited_by ?? null
+        ,editedAt: memory.editedAt ?? memory.edited_at ?? null
     };
 }
 
@@ -1926,6 +1960,7 @@ async function toggleFavorite(id) {
 
 async function loadOnlineFavorites({ migrate = false } = {}) {
     if (favoritesLoading) return;
+    const requestGeneration = authGeneration;
     favoritesLoading = true;
     favoritesError = "";
     if (favoritesModal.classList.contains("open")) renderFavorites();
@@ -1934,10 +1969,12 @@ async function loadOnlineFavorites({ migrate = false } = {}) {
         const response = await apiFetch(`${API_URL}/api/favorites`);
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "Could not load favorites.");
+        if (requestGeneration !== authGeneration || !isAuthenticated) return;
         saveFavoriteIds(Array.isArray(data.favoriteIds) ? data.favoriteIds : []);
         favoritesLoaded = true;
 
-        if (migrate && !localStorage.getItem(FAVORITES_MIGRATION_KEY)) {
+        const migrationKey = `${FAVORITES_MIGRATION_KEY}:${currentUser?.username || "unknown"}`;
+        if (migrate && currentUser?.username === "husbun" && !localStorage.getItem(migrationKey)) {
             const validLocalIds = getLegacyFavoriteIds()
                 .filter(id => memories.some(memory => memory.id === id))
                 .filter(id => !favoriteIds.has(id));
@@ -1945,7 +1982,7 @@ async function loadOnlineFavorites({ migrate = false } = {}) {
                 await requestFavoriteMutation(id, true);
                 favoriteIds.add(id);
             }
-            localStorage.setItem(FAVORITES_MIGRATION_KEY, "complete");
+            localStorage.setItem(migrationKey, "complete");
             localStorage.removeItem(FAVORITES_STORAGE_KEY);
         }
         updateFavoriteButtons();
@@ -2664,7 +2701,8 @@ function createMonthFrames(
 }
 
 async function loadMemories() {
-
+    const requestGeneration = authGeneration;
+    const requestVersion = ++memoriesRequestVersion;
     try {
 
         const response =
@@ -2687,10 +2725,13 @@ async function loadMemories() {
         }
 
 
-        memories =
+        const nextMemories =
             Array.isArray(data.memories)
                 ? data.memories.map(normalizeMemory)
                 : [];
+
+        if (requestGeneration !== authGeneration || requestVersion !== memoriesRequestVersion || !isAuthenticated) return false;
+        memories = nextMemories;
 
 
         await loadOnlineFavorites({ migrate: true });
@@ -2701,6 +2742,7 @@ async function loadMemories() {
         console.log(
             `Loaded ${memories.length} memories from Supabase.`
         );
+        return true;
 
     }
 
@@ -2712,17 +2754,9 @@ async function loadMemories() {
         );
 
 
-        memories = [];
-
-
-        buildGallery();
-
-        updateTimeline();
-
-
-        showToast(
-            "Couldn't load memories."
-        );
+        if (requestGeneration !== authGeneration || requestVersion !== memoriesRequestVersion || !isAuthenticated) return false;
+        showGalleryLoadError(error.message || "Unable to load the shared archive.");
+        return false;
 
     }
 
@@ -3992,6 +4026,11 @@ function renderViewer(direction = null) {
                 memory.date
             )
         }`.toUpperCase();
+
+    viewerAttribution.hidden = !memory.uploadedBy && !memory.editedBy;
+    viewerUploadedBy.textContent = memory.uploadedBy || "Unknown";
+    viewerEditedBy.textContent = memory.editedBy || "—";
+    viewerEditedByRow.hidden = !memory.editedBy;
 
     renderViewerSetContext(memory);
 
@@ -6549,6 +6588,20 @@ function openFavoritesModal() {
     loadOnlineFavorites();
 }
 
+function showGalleryLoadError(message) {
+    monthsContainer.setAttribute("aria-busy", "false");
+    monthsContainer.innerHTML = `
+        <section class="gallery-loading gallery-load-error" aria-live="assertive">
+            <strong>THE ARCHIVE COULD NOT BE LOADED</strong>
+            <small>${escapeHTML(message)}</small>
+            <button type="button" class="memory-primary-button" id="retryMemoriesButton">RETRY</button>
+        </section>
+    `;
+    document.getElementById("retryMemoriesButton")?.addEventListener("click", () => {
+        initializeGallery({ retry: true });
+    }, { once: true });
+}
+
 
 function renderFavorites() {
 
@@ -7156,6 +7209,10 @@ let galleryInitialized = false;
 function showLogin(message = "") {
     authRedirecting = false;
     isAuthenticated = false;
+    currentUser = null;
+    accountIndicator.textContent = "";
+    galleryInitialized = false;
+    galleryInitializationPromise = null;
     document.body.classList.add("auth-locked");
     pauseGalleryVideoPreviews();
     pauseOurFilmsVideo();
@@ -7173,6 +7230,9 @@ function showGallery() {
     document.body.classList.remove("auth-locked");
     loginScreen.hidden = true;
     loginError.textContent = "";
+    accountIndicator.textContent = currentUser?.displayName
+        ? `SIGNED IN AS ${currentUser.displayName.toUpperCase()}`
+        : "";
 }
 
 function clearPrivateState() {
@@ -7194,6 +7254,9 @@ function clearPrivateState() {
 function handleSessionExpired() {
     if (authRedirecting) return;
     authRedirecting = true;
+    authGeneration += 1;
+    galleryInitialized = false;
+    galleryInitializationPromise = null;
     clearPrivateState();
     showLogin("Your session expired. Please sign in again.");
 }
@@ -7218,14 +7281,29 @@ async function submitLogin(event) {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
             if (response.status === 503) {
-                throw new Error("Private login is not configured on the server.");
+                throw new Error("The gallery is temporarily unavailable. Retry shortly.");
             }
             if (response.status === 429) {
                 throw new Error(data.error || "Too many attempts. Try again later.");
             }
+            if (response.status >= 500) {
+                throw new Error(data.error || "The gallery is temporarily unavailable. Retry shortly.");
+            }
             throw new Error("Incorrect username or password.");
         }
+
+        const sessionResponse = await apiFetch(`${API_URL}/api/auth/me`);
+        const sessionData = await sessionResponse.json().catch(() => ({}));
+        if (sessionResponse.status === 503) {
+            throw new Error("The gallery is temporarily unavailable. Retry shortly.");
+        }
+        if (!sessionResponse.ok || !sessionData.authenticated) {
+            throw new Error("Your browser could not maintain the login session. Check privacy settings or use the supported gallery address.");
+        }
+
         loginForm.reset();
+        currentUser = sessionData.user || { username, displayName: username };
+        authGeneration += 1;
         showGallery();
         await initializeGallery();
     } catch (error) {
@@ -7243,6 +7321,9 @@ async function logout() {
     try {
         await apiFetch(`${API_URL}/api/auth/logout`, { method: "POST" });
     } finally {
+        authGeneration += 1;
+        galleryInitialized = false;
+        galleryInitializationPromise = null;
         clearPrivateState();
         logoutButton.disabled = false;
         showLogin();
@@ -7258,10 +7339,12 @@ togglePasswordButton.addEventListener("click", () => {
 });
 logoutButton.addEventListener("click", logout);
 
-async function initializeGallery() {
+async function initializeGallery({ retry = false } = {}) {
+    if (galleryInitialized && !retry) return true;
+    if (galleryInitializationPromise && !retry) return galleryInitializationPromise;
 
-    if (galleryInitialized) return;
-    galleryInitialized = true;
+    const initializationGeneration = authGeneration;
+    galleryInitializationPromise = (async () => {
 
     document.body.classList.add(
         "page-entering"
@@ -7289,7 +7372,18 @@ async function initializeGallery() {
         );
 
 
-    await loadMemories();
+        const loaded = await loadMemories();
+        if (loaded && initializationGeneration === authGeneration && isAuthenticated) {
+            galleryInitialized = true;
+        }
+        return loaded;
+    })();
+
+    try {
+        return await galleryInitializationPromise;
+    } finally {
+        galleryInitializationPromise = null;
+    }
 
 }
 
@@ -7305,12 +7399,18 @@ document.addEventListener(
 
 
         resumeGalleryVideoPreviews();
-        if (isAuthenticated) loadOnlineFavorites();
+        if (isAuthenticated) {
+            loadOnlineFavorites();
+            loadMemories();
+        }
     }
 );
 
 window.addEventListener("focus", () => {
-    if (isAuthenticated) loadOnlineFavorites();
+    if (isAuthenticated) {
+        loadOnlineFavorites();
+        loadMemories();
+    }
 });
 
 
@@ -7323,10 +7423,14 @@ window.addEventListener(
 document.body.classList.add("auth-locked");
 
 (async function bootstrapAuth() {
+    const bootstrapGeneration = authGeneration;
     try {
         const response = await apiFetch(`${API_URL}/api/auth/me`);
         const data = await response.json().catch(() => ({}));
+        if (bootstrapGeneration !== authGeneration) return;
         if (response.ok && data.authenticated) {
+            currentUser = data.user || null;
+            authGeneration += 1;
             showGallery();
             await initializeGallery();
         } else {
