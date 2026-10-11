@@ -2906,8 +2906,24 @@ button,
         margin-inline: 0;
     }
 
-    .brand-gallery {
-        display: none;
+    .navbar .brand {
+        gap: 4px;
+        min-width: 0;
+    }
+
+    .navbar .brand-el {
+        font-size: 27px;
+        letter-spacing: -1.6px;
+    }
+
+    .navbar .brand-heart {
+        font-size: 17px;
+    }
+
+    .navbar .brand-gallery {
+        display: inline;
+        font-size: 13px;
+        white-space: nowrap;
     }
 
     .memory-button span:last-child {
@@ -5957,11 +5973,22 @@ button:active {
         box-shadow: inset 2px 0 var(--pink);
     }
 
-    .mobile-nav-icon {
+.mobile-nav-icon {
         width: 22px;
         color: var(--pink-light);
         font: 18px/1 Georgia, serif;
         text-align: center;
+    }
+
+    .mobile-nav-envelope {
+        width: 22px;
+        height: 22px;
+        flex: 0 0 22px;
+        color: var(--pink-light);
+    }
+
+    .mobile-nav-link[data-nav-target="lettersButton"] > .mobile-nav-icon {
+        display: none;
     }
 
     .mobile-nav-account {
@@ -6263,5 +6290,164 @@ button:active {
     .letter-editor-dialog .field textarea {
         max-height: min(430px, 42dvh);
         scrollbar-width: none;
+    }
+}
+
+/* Final narrow-screen layout guardrails. Keep controls inside the visual viewport. */
+@media (max-width: 700px) {
+    .navbar {
+        padding-inline: max(14px, env(safe-area-inset-left)) max(14px, env(safe-area-inset-right));
+    }
+
+    .navbar .brand {
+        max-width: calc(100% - 58px);
+        min-width: 0;
+    }
+
+    .navbar .brand-gallery {
+        font-size: clamp(12px, 3.8vw, 14px);
+    }
+
+    .mobile-menu-toggle {
+        flex: 0 0 42px;
+    }
+
+    .upload-dialog,
+    .search-dialog,
+    .favorites-dialog,
+    .memory-action-dialog {
+        width: calc(100vw - 16px);
+        max-width: calc(100vw - 16px);
+        box-sizing: border-box;
+    }
+
+    .memory-action-dialog {
+        padding: 30px 18px 20px;
+    }
+
+    .memory-action-buttons,
+    .letter-editor-actions,
+    .letter-reader-actions {
+        width: 100%;
+        flex-wrap: wrap;
+        box-sizing: border-box;
+    }
+
+    .memory-action-buttons > *,
+    .letter-editor-actions > *,
+    .letter-reader-actions > * {
+        flex: 1 1 140px;
+        min-width: 0;
+        min-height: 48px;
+    }
+
+    .our-films-dialog {
+        width: calc(100vw - 16px);
+        max-width: calc(100vw - 16px);
+        height: calc(100dvh - 16px);
+        padding: 22px 12px 12px;
+        gap: 10px;
+    }
+
+    .our-films-navigation {
+        grid-template-columns: 44px minmax(0, 1fr) 44px;
+        gap: 5px;
+    }
+
+    .our-films-caption-row {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .our-films-caption-row p,
+    .our-films-caption-row time {
+        max-width: 100%;
+    }
+
+    .our-films-play-button,
+    .our-films-add-memory,
+    .our-films-arrow,
+    .our-films-month {
+        min-height: 44px;
+    }
+
+    .our-films-months {
+        width: 100%;
+        justify-content: flex-start;
+        gap: 12px;
+    }
+
+    .letter-editor-dialog,
+    .letter-reader-dialog,
+    .letters-dialog {
+        width: calc(100vw - 16px);
+        max-width: calc(100vw - 16px);
+        box-sizing: border-box;
+    }
+
+    .letter-editor-dialog {
+        padding: 28px 12px max(18px, env(safe-area-inset-bottom));
+    }
+
+    .letter-writing-toolbar {
+        align-items: stretch;
+        gap: 10px;
+        padding: 10px;
+    }
+
+    .letter-writing-toolbar > * + * {
+        padding-left: 0;
+        border-left: 0;
+    }
+
+    .letter-style-select,
+    .letter-ink-tools,
+    .letter-paper-tools {
+        min-width: 0;
+        flex-wrap: wrap;
+    }
+
+    .letter-style-select select {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .letter-preview-button {
+        margin-left: 0;
+    }
+
+    .letter-editor-dialog form {
+        padding: 22px 16px;
+    }
+
+    .letter-editor-dialog .form-grid,
+    .letter-closing-fields {
+        grid-template-columns: 1fr;
+    }
+
+    .letter-editor-dialog .form-grid .field:first-child {
+        grid-column: auto;
+    }
+
+    .letter-editor-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+
+@media (max-width: 360px) {
+    .memory-action-buttons > *,
+    .letter-reader-actions > * {
+        flex-basis: 100%;
+    }
+
+    .viewer-actions {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .viewer-actions .favorite-large {
+        grid-column: 1 / -1;
+        width: 100%;
     }
 }
