@@ -5351,3 +5351,114 @@ button:active {
         opacity: 0.3;
     }
 }
+
+/* PRIVATE LOGIN */
+.login-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: grid;
+    place-items: center;
+    padding: 28px;
+    background: #0c0809;
+    color: var(--cream);
+    animation: login-fade-in 500ms var(--ease-out) both;
+}
+.login-screen[hidden] { display: none; }
+.auth-locked > .navbar,
+.auth-locked > .gallery-track,
+.auth-locked > .timeline-bar,
+.auth-locked > .grain { visibility: hidden; }
+.login-card { width: min(410px, 100%); }
+.login-mark { color: var(--pink-light); font: 11px monospace; letter-spacing: 3px; }
+.login-card h1 { margin-top: 20px; font: 400 32px/1.13 Georgia, serif; letter-spacing: -.5px; }
+.login-card h1 em { color: var(--muted); font-size: .72em; }
+.login-card form { margin-top: 48px; }
+.login-field { display: block; margin-top: 22px; }
+.login-field > span:first-child { display: block; margin-bottom: 9px; color: var(--orange-light); font: 10px monospace; letter-spacing: 1.7px; }
+.login-field input { width: 100%; min-height: 48px; padding: 12px 0; border: 0; border-bottom: 1px solid rgba(255,190,187,.25); outline: 0; background: transparent; color: var(--cream); font: 16px Georgia, serif; transition: border-color 180ms ease, box-shadow 180ms ease; }
+.login-field input:focus { border-color: var(--pink); box-shadow: 0 1px 0 var(--pink); }
+.password-control { position: relative; display: block; }
+.password-control input { padding-right: 44px; }
+.password-control button { position: absolute; right: 0; bottom: 8px; width: 36px; height: 36px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.password-control button:hover, .password-control button:focus-visible { color: var(--pink-light); }
+.login-submit { display: flex; justify-content: space-between; width: 100%; min-height: 50px; margin-top: 32px; padding: 0 17px; border: 1px solid rgba(255,117,159,.45); background: rgba(255,117,159,.08); color: var(--cream); cursor: pointer; font: 10px monospace; letter-spacing: 1.7px; transition: background 180ms ease, border-color 180ms ease; }
+.login-submit:hover, .login-submit:focus-visible { border-color: var(--pink); background: rgba(255,117,159,.16); outline: 0; }
+.login-submit:disabled { cursor: wait; opacity: .55; }
+.login-error { min-height: 18px; margin-top: 14px; color: var(--pink-light); font: 11px monospace; }
+.login-footer { margin-top: 78px; color: var(--faint); font: 9px monospace; letter-spacing: 1.4px; }
+.logout-button { border: 0; padding: 8px 2px; background: none; color: var(--faint); cursor: pointer; font: 9px monospace; letter-spacing: 1.1px; }
+.logout-button:hover, .logout-button:focus-visible { color: var(--pink-light); outline: 0; }
+@keyframes login-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 600px) {
+    .login-screen { padding: 24px; }
+    .login-card h1 { font-size: 29px; }
+    .login-card form { margin-top: 38px; }
+    .login-footer { margin-top: 58px; }
+    .logout-button { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .login-screen { animation: none; }
+}
+
+/* LETTERS */
+.letters-dialog,
+.letter-editor-dialog,
+.letter-reader-dialog {
+    position: relative;
+    z-index: 2;
+    width: min(1040px, 94vw);
+    max-height: 90vh;
+    max-height: 90dvh;
+    overflow-y: auto;
+    padding: 42px;
+    border: 1px solid rgba(255,190,187,0.14);
+    background: linear-gradient(145deg, #17100f, #0d090a);
+}
+.letters-header { display: flex; justify-content: space-between; gap: 24px; }
+.letters-header h2, .letter-editor-dialog h2 { margin-top: 8px; font: 400 42px Georgia, serif; }
+.letters-subtitle { margin-top: 9px; color: var(--muted); font: italic 16px Georgia, serif; }
+.letters-toolbar { display: flex; align-items: center; gap: 14px; margin: 30px 0 24px; }
+.letters-search { display: flex; align-items: center; gap: 10px; flex: 1; padding: 0 14px; border: 1px solid rgba(255,190,187,0.16); background: rgba(255,255,255,0.035); color: var(--muted); }
+.letters-search input { width: 100%; min-height: 46px; border: 0; outline: 0; background: transparent; color: var(--cream); }
+.letters-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px; }
+.letter-group + .letter-group { margin-top: 28px; }
+.letter-group-title { margin-bottom: 12px; color: var(--orange-light); font: 10px monospace; letter-spacing: 1.6px; }
+.letter-card { position: relative; min-height: 190px; padding: 24px 20px 18px; border: 1px solid rgba(255,190,187,0.16); background: linear-gradient(150deg, rgba(244,207,175,0.13), rgba(255,117,159,0.04)); cursor: pointer; transition: transform 180ms ease, border-color 180ms ease, background 180ms ease; }
+.letter-card::before { content: ""; position: absolute; inset: 0 0 auto; height: 50%; background: linear-gradient(145deg, transparent 49%, rgba(255,190,187,0.15) 50%, transparent 51%); pointer-events: none; }
+.letter-card:hover, .letter-card:focus-visible { transform: translateY(-4px); border-color: rgba(255,117,159,0.55); background: linear-gradient(150deg, rgba(244,207,175,0.2), rgba(255,117,159,0.08)); outline: none; }
+.letter-card h3 { position: relative; margin-top: 28px; color: var(--cream); font: 400 23px Georgia, serif; }
+.letter-card p { margin-top: 10px; color: var(--muted); font: 12px monospace; letter-spacing: .8px; text-transform: uppercase; }
+.letter-card time { display: block; margin-top: 18px; color: var(--orange-light); font: 10px monospace; }
+.letter-draft-badge { display: inline-block; color: var(--pink-light) !important; }
+.letters-status { min-height: 24px; margin-bottom: 12px; color: var(--muted); font: 11px monospace; letter-spacing: .8px; }
+.letter-editor-dialog { width: min(720px, 94vw); }
+.letter-editor-dialog form { margin-top: 28px; }
+.letter-editor-dialog .field { position: relative; }
+.letter-character-count { display: block; margin-top: 6px; color: var(--faint); font: 10px monospace; text-align: right; }
+.letter-form-error { min-height: 20px; margin-top: 12px; color: var(--pink-light); font: 11px monospace; }
+.letter-editor-actions, .letter-reader-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 18px; }
+.letter-reader-dialog { width: min(760px, 94vw); padding: 26px; background: transparent; border: 0; }
+.letter-paper { padding: clamp(28px, 6vw, 72px); color: #332422; background: #f5e6c9; box-shadow: 0 24px 80px rgba(0,0,0,.36); }
+.letter-paper h2 { margin-top: 12px; color: #3e2927; font: 400 clamp(30px, 5vw, 52px) Georgia, serif; }
+.letter-reader-meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 18px; padding-bottom: 18px; border-bottom: 1px solid rgba(75,46,39,.22); color: #795952; font: 10px monospace; letter-spacing: .8px; text-transform: uppercase; }
+.letter-reader-message { margin-top: 32px; color: #3e2927; font: 18px/1.75 Georgia, serif; white-space: pre-wrap; overflow-wrap: anywhere; }
+.letter-paper .eyebrow { color: #a65d4e; }
+.letter-paper .memory-secondary-button { color: #60403a; border-color: rgba(75,46,39,.3); }
+.letter-paper .delete-confirm-button { color: #8f4358; border-color: rgba(143,67,88,.35); background: transparent; }
+.modal.open .letters-dialog, .modal.open .letter-editor-dialog, .modal.open .letter-reader-dialog { animation: letters-dialog-in 280ms var(--ease-out) both; }
+@keyframes letters-dialog-in { from { opacity: 0; transform: translateY(10px) scale(.99); } to { opacity: 1; transform: none; } }
+@media (max-width: 700px) {
+    .letters-dialog, .letter-editor-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); padding: 32px 18px 22px; }
+    .letters-header h2, .letter-editor-dialog h2 { font-size: 32px; }
+    .letters-toolbar { align-items: stretch; flex-direction: column; }
+    .letters-grid { grid-template-columns: 1fr; }
+    .letter-reader-dialog { width: 100vw; padding: 8px; }
+    .letter-paper { padding: 32px 22px; }
+    .letter-reader-message { font-size: 16px; }
+    .letter-editor-actions, .letter-reader-actions { flex-direction: column-reverse; }
+    .letter-editor-actions button, .letter-reader-actions button { width: 100%; min-height: 46px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .letter-card:hover, .letter-card:focus-visible { transform: none; }
+}

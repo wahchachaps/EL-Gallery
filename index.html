@@ -18,7 +18,21 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 
-<body>
+<body class="auth-locked">
+
+    <section class="login-screen" id="loginScreen" aria-labelledby="loginTitle">
+        <div class="login-card">
+            <p class="login-mark" aria-hidden="true">EL GALLERY</p>
+            <h1 id="loginTitle">A private collection<br><em>of our favorite moments.</em></h1>
+            <form id="loginForm" novalidate>
+                <label class="login-field"><span>USERNAME</span><input id="loginUsername" name="username" type="text" autocomplete="username" required maxlength="80" placeholder="Enter username"></label>
+                <label class="login-field"><span>PASSWORD</span><span class="password-control"><input id="loginPassword" name="password" type="password" autocomplete="current-password" required maxlength="200" placeholder="Enter password"><button type="button" id="togglePasswordButton" aria-label="Show password" aria-pressed="false">◉</button></span></label>
+                <p id="loginError" class="login-error" role="alert" aria-live="polite"></p>
+                <button type="submit" class="login-submit" id="loginSubmitButton"><span>ENTER GALLERY</span><span aria-hidden="true">→</span></button>
+            </form>
+            <p class="login-footer">PRIVATE ARCHIVE · EST. 2026</p>
+        </div>
+    </section>
 
     <div class="grain"></div>
 
@@ -61,10 +75,25 @@
                 Favorites
             </button>
 
+            <button
+                class="nav-link"
+                id="lettersButton"
+            >
+                For You
+            </button>
+
         </nav>
 
 
         <div class="nav-actions">
+
+            <button
+                class="logout-button"
+                id="logoutButton"
+                type="button"
+            >
+                LOG OUT
+            </button>
 
             <button
                 class="icon-button"
@@ -454,6 +483,78 @@
 
         </div>
 
+    </div>
+
+
+    <!-- LETTERS -->
+
+    <div class="modal letters-modal" id="lettersModal" aria-hidden="true">
+        <div class="modal-backdrop" data-close-letters></div>
+        <section class="letters-dialog" role="dialog" aria-modal="true" aria-labelledby="lettersTitle">
+            <header class="letters-header">
+                <div>
+                    <p class="eyebrow">FOR YOU</p>
+                    <h2 id="lettersTitle">Our Letters</h2>
+                    <p class="letters-subtitle">Some things deserve more than a caption.</p>
+                </div>
+                <button type="button" class="modal-close" id="closeLettersButton" aria-label="Close letters">×</button>
+            </header>
+            <div class="letters-toolbar">
+                <label class="letters-search">
+                    <span aria-hidden="true">⌕</span>
+                    <input id="lettersSearchInput" type="search" placeholder="Search letters..." autocomplete="off" aria-label="Search letters">
+                </label>
+                <button type="button" class="memory-primary-button" id="writeLetterButton">WRITE A LETTER <span>→</span></button>
+            </div>
+            <div id="lettersStatus" class="letters-status" role="status" aria-live="polite"></div>
+            <div id="lettersGrid" class="letters-grid"></div>
+        </section>
+    </div>
+
+    <div class="modal letter-editor-modal" id="letterEditorModal" aria-hidden="true">
+        <div class="modal-backdrop" data-close-letter-editor></div>
+        <section class="letter-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="letterEditorTitle">
+            <button type="button" class="modal-close" id="closeLetterEditorButton" aria-label="Close letter editor">×</button>
+            <p class="eyebrow">A NOTE FOR US</p>
+            <h2 id="letterEditorTitle">Write a letter.</h2>
+            <form id="letterForm" novalidate>
+                <div class="form-grid">
+                    <label class="field"><span>Title</span><input id="letterTitleInput" name="title" maxlength="120" required placeholder="A little something..."></label>
+                    <label class="field"><span>From</span><input id="letterSenderInput" name="sender" maxlength="80" required placeholder="Your name"></label>
+                    <label class="field"><span>To</span><input id="letterRecipientInput" name="recipient" maxlength="80" required placeholder="Their name"></label>
+                    <label class="field"><span>Letter date</span><input id="letterDateInput" name="letter_date" type="date" required></label>
+                </div>
+                <label class="field"><span>Message</span><textarea id="letterMessageInput" name="message" rows="12" maxlength="12000" required placeholder="Write from the heart..."></textarea><small class="letter-character-count" id="letterCharacterCount">0 / 12000</small></label>
+                <p class="letter-form-error" id="letterFormError" role="alert"></p>
+                <div class="letter-editor-actions">
+                    <button type="button" class="memory-secondary-button" id="saveLetterDraftButton">SAVE DRAFT</button>
+                    <button type="submit" class="memory-primary-button" id="saveLetterButton">SAVE LETTER <span>→</span></button>
+                </div>
+            </form>
+        </section>
+    </div>
+
+    <div class="modal letter-reader-modal" id="letterReaderModal" aria-hidden="true">
+        <div class="modal-backdrop" data-close-letter-reader></div>
+        <article class="letter-reader-dialog" role="dialog" aria-modal="true" aria-labelledby="letterReaderTitle">
+            <button type="button" class="modal-close" id="closeLetterReaderButton" aria-label="Close letter">×</button>
+            <div class="letter-paper">
+                <p class="eyebrow" id="letterReaderStatus"></p>
+                <h2 id="letterReaderTitle"></h2>
+                <div class="letter-reader-meta"><span id="letterReaderFrom"></span><span id="letterReaderTo"></span><time id="letterReaderDate"></time></div>
+                <div class="letter-reader-message" id="letterReaderMessage"></div>
+                <div class="letter-reader-actions"><button type="button" class="memory-secondary-button" id="editLetterButton">EDIT</button><button type="button" class="delete-confirm-button" id="deleteLetterButton">DELETE</button></div>
+            </div>
+        </article>
+    </div>
+
+    <div class="modal letter-delete-modal" id="letterDeleteModal" aria-hidden="true">
+        <div class="modal-backdrop" data-close-letter-delete></div>
+        <section class="memory-action-dialog" role="dialog" aria-modal="true" aria-labelledby="letterDeleteTitle">
+            <button type="button" class="memory-action-close" id="closeLetterDeleteButton" aria-label="Close delete confirmation">×</button>
+            <p class="eyebrow">REMOVE LETTER</p><h2 id="letterDeleteTitle">Delete this letter?</h2><p class="memory-action-description">This cannot be undone.</p>
+            <div class="memory-action-buttons"><button type="button" class="memory-secondary-button" id="cancelLetterDeleteButton">CANCEL</button><button type="button" class="delete-confirm-button" id="confirmLetterDeleteButton">DELETE LETTER</button></div>
+        </section>
     </div>
 
 

@@ -1,1 +1,1 @@
-# EL-Gallery
+# EL Gallery

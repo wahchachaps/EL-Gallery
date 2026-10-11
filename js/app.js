@@ -5,6 +5,30 @@
 
 const API_URL =
     "https://el-gallery-api.elvincemaranan.workers.dev";
+
+const loginScreen = document.getElementById("loginScreen");
+const loginForm = document.getElementById("loginForm");
+const loginUsername = document.getElementById("loginUsername");
+const loginPassword = document.getElementById("loginPassword");
+const loginError = document.getElementById("loginError");
+const loginSubmitButton = document.getElementById("loginSubmitButton");
+const togglePasswordButton = document.getElementById("togglePasswordButton");
+const logoutButton = document.getElementById("logoutButton");
+
+let isAuthenticated = false;
+let authRedirecting = false;
+
+async function apiFetch(input, options = {}) {
+    const response = await fetch(input, {
+        credentials: "include",
+        cache: "no-store",
+        ...options
+    });
+    if (response.status === 401 && !String(input).includes("/api/auth/")) {
+        handleSessionExpired();
+    }
+    return response;
+}
     
 const CURRENT_YEAR = 2026;
 const START_MONTH = 6;
@@ -257,6 +281,9 @@ const filmsButton =
 
 const favoritesButton =
     document.getElementById("favoritesButton");
+
+const lettersButton =
+    document.getElementById("lettersButton");
 
 const searchButton =
     document.getElementById("searchButton");
@@ -546,14 +573,217 @@ const favoritesGrid =
 const closeFavoritesButton =
     document.getElementById("closeFavoritesButton");
 
+const lettersModal = document.getElementById("lettersModal");
+const lettersGrid = document.getElementById("lettersGrid");
+const lettersStatus = document.getElementById("lettersStatus");
+const lettersSearchInput = document.getElementById("lettersSearchInput");
+const closeLettersButton = document.getElementById("closeLettersButton");
+const writeLetterButton = document.getElementById("writeLetterButton");
+const letterEditorModal = document.getElementById("letterEditorModal");
+const letterForm = document.getElementById("letterForm");
+const letterEditorTitle = document.getElementById("letterEditorTitle");
+const closeLetterEditorButton = document.getElementById("closeLetterEditorButton");
+const letterTitleInput = document.getElementById("letterTitleInput");
+const letterSenderInput = document.getElementById("letterSenderInput");
+const letterRecipientInput = document.getElementById("letterRecipientInput");
+const letterDateInput = document.getElementById("letterDateInput");
+const letterMessageInput = document.getElementById("letterMessageInput");
+const letterCharacterCount = document.getElementById("letterCharacterCount");
+const letterFormError = document.getElementById("letterFormError");
+const saveLetterDraftButton = document.getElementById("saveLetterDraftButton");
+const saveLetterButton = document.getElementById("saveLetterButton");
+const letterReaderModal = document.getElementById("letterReaderModal");
+const closeLetterReaderButton = document.getElementById("closeLetterReaderButton");
+const letterReaderStatus = document.getElementById("letterReaderStatus");
+const letterReaderTitle = document.getElementById("letterReaderTitle");
+const letterReaderFrom = document.getElementById("letterReaderFrom");
+const letterReaderTo = document.getElementById("letterReaderTo");
+const letterReaderDate = document.getElementById("letterReaderDate");
+const letterReaderMessage = document.getElementById("letterReaderMessage");
+const editLetterButton = document.getElementById("editLetterButton");
+const deleteLetterButton = document.getElementById("deleteLetterButton");
+const letterDeleteModal = document.getElementById("letterDeleteModal");
+const closeLetterDeleteButton = document.getElementById("closeLetterDeleteButton");
+const cancelLetterDeleteButton = document.getElementById("cancelLetterDeleteButton");
+const confirmLetterDeleteButton = document.getElementById("confirmLetterDeleteButton");
+
 
 const toast =
     document.getElementById("toast");
+
+let letters = [];
+let activeLetter = null;
+let editingLetterId = null;
+let letterEditorDirty = false;
+let isSavingLetter = false;
+let isDeletingLetter = false;
 
 
 /* =========================================================
    HELPERS
    ========================================================= */
+
+function normalizeLetter(letter) {
+    return {
+        id: letter.id,
+        title: letter.title || "Untitled letter",
+        sender: letter.sender || "",
+        recipient: letter.recipient || "",
+        letterDate: letter.letterDate || letter.letter_date || "",
+        message: letter.message || "",
+        isDraft: Boolean(letter.isDraft ?? letter.is_draft ?? letter.status === "draft"),
+        createdAt: letter.createdAt || letter.created_at || "",
+        updatedAt: letter.updatedAt || letter.updated_at || ""
+    };
+}
+
+function letterDateLabel(value) {
+    if (!value) return "No date";
+    const date = new Date(`${value}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+async function requestLetters(path = "", options = {}) {
+    const response = await apiFetch(`${API_URL}/api/letters${path}`, {
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+        ...options
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Could not save letters.");
+    return data;
+}
+
+function filteredLetters() {
+    const query = lettersSearchInput.value.trim().toLowerCase();
+    return letters.filter(letter => !query || [letter.title, letter.sender, letter.recipient, letter.message].some(value => value.toLowerCase().includes(query)));
+}
+
+function renderLetters() {
+    const visible = filteredLetters();
+    if (!letters.length) {
+        lettersStatus.textContent = "";
+        lettersGrid.innerHTML = `<div class="letters-status">Our first letter is waiting to be written.</div>`;
+        return;
+    }
+    if (!visible.length) {
+        lettersStatus.textContent = "No letters match your search.";
+        lettersGrid.innerHTML = "";
+        return;
+    }
+    lettersStatus.textContent = `${visible.length} ${visible.length === 1 ? "letter" : "letters"}`;
+    const renderCard = letter => `
+        <button type="button" class="letter-card" data-letter-id="${escapeHTML(letter.id)}">
+            ${letter.isDraft ? `<span class="letter-draft-badge">DRAFT</span>` : ""}
+            <h3>${escapeHTML(letter.title)}</h3>
+            <p>From ${escapeHTML(letter.sender)} · To ${escapeHTML(letter.recipient)}</p>
+            <time datetime="${escapeHTML(letter.letterDate)}">${escapeHTML(letterDateLabel(letter.letterDate))}</time>
+        </button>`;
+    const drafts = visible.filter(letter => letter.isDraft);
+    const saved = visible.filter(letter => !letter.isDraft);
+    lettersGrid.innerHTML = `${saved.length ? `<section class="letter-group"><h3 class="letter-group-title">SAVED LETTERS</h3><div class="letters-grid">${saved.map(renderCard).join("")}</div></section>` : ""}${drafts.length ? `<section class="letter-group"><h3 class="letter-group-title">DRAFTS</h3><div class="letters-grid">${drafts.map(renderCard).join("")}</div></section>` : ""}`;
+}
+
+async function loadLetters() {
+    lettersStatus.textContent = "Loading our letters…";
+    lettersGrid.innerHTML = "";
+    try {
+        const data = await requestLetters();
+        letters = (Array.isArray(data.letters) ? data.letters : []).map(normalizeLetter).sort((a, b) => String(b.letterDate || b.updatedAt).localeCompare(String(a.letterDate || a.updatedAt)));
+        renderLetters();
+    } catch (error) {
+        lettersStatus.innerHTML = `${escapeHTML(error.message)} <button type="button" class="letters-retry" id="retryLettersButton">RETRY</button>`;
+        lettersGrid.innerHTML = "";
+        document.getElementById("retryLettersButton")?.addEventListener("click", loadLetters);
+    }
+}
+
+function openLetters() {
+    pauseOurFilmsVideo();
+    pauseGalleryVideoPreviews();
+    document.querySelectorAll(".nav-link").forEach(link => link.classList.remove("active"));
+    lettersButton.classList.add("active");
+    lettersSearchInput.value = "";
+    openModal(lettersModal);
+    loadLetters();
+}
+
+function formLetter() {
+    return { title: letterTitleInput.value.trim(), sender: letterSenderInput.value.trim(), recipient: letterRecipientInput.value.trim(), letter_date: letterDateInput.value, message: letterMessageInput.value };
+}
+
+function updateLetterDirtyState() {
+    letterCharacterCount.textContent = `${letterMessageInput.value.length} / 12000`;
+    letterEditorDirty = Object.values(formLetter()).some(Boolean);
+}
+
+function openLetterEditor(letter = null) {
+    editingLetterId = letter?.id || null;
+    letterEditorTitle.textContent = letter ? "Edit your letter." : "Write a letter.";
+    letterTitleInput.value = letter?.title || "";
+    letterSenderInput.value = letter?.sender || "";
+    letterRecipientInput.value = letter?.recipient || "";
+    letterDateInput.value = letter?.letterDate || dateToInputValue(new Date());
+    letterMessageInput.value = letter?.message || "";
+    letterFormError.textContent = "";
+    updateLetterDirtyState();
+    openModal(letterEditorModal);
+}
+
+function closeLetterEditor(force = false) {
+    if (!force && letterEditorDirty && !window.confirm("You have unsaved changes. Close this letter?")) return;
+    letterEditorDirty = false;
+    closeModal(letterEditorModal);
+}
+
+function showLetter(letter) {
+    activeLetter = letter;
+    letterReaderStatus.textContent = letter.isDraft ? "DRAFT" : "A LETTER FOR YOU";
+    letterReaderTitle.textContent = letter.title;
+    letterReaderFrom.textContent = `From ${letter.sender}`;
+    letterReaderTo.textContent = `To ${letter.recipient}`;
+    letterReaderDate.textContent = letterDateLabel(letter.letterDate);
+    letterReaderMessage.textContent = letter.message;
+    openModal(letterReaderModal);
+}
+
+async function saveLetter(isDraft) {
+    if (isSavingLetter) return;
+    const payload = formLetter();
+    const missing = ["title", "sender", "recipient", "letter_date", "message"].filter(key => !payload[key]);
+    if (missing.length) { letterFormError.textContent = "Please complete every field before saving."; return; }
+    isSavingLetter = true;
+    saveLetterDraftButton.disabled = true; saveLetterButton.disabled = true;
+    saveLetterDraftButton.textContent = "SAVING…"; saveLetterButton.textContent = "SAVING…";
+    letterFormError.textContent = "";
+    try {
+        const data = await requestLetters(editingLetterId ? `/${encodeURIComponent(editingLetterId)}` : "", { method: editingLetterId ? "PATCH" : "POST", body: JSON.stringify({ ...payload, is_draft: isDraft }) });
+        const saved = normalizeLetter(data.letter || data);
+        letters = [saved, ...letters.filter(letter => letter.id !== saved.id)];
+        closeModal(letterEditorModal);
+        if (lettersModal.classList.contains("open")) renderLetters(); else openLetters();
+        showToast(isDraft ? "Draft saved" : "Letter saved");
+    } catch (error) {
+        letterFormError.textContent = error.message;
+    } finally {
+        isSavingLetter = false;
+        saveLetterDraftButton.disabled = false; saveLetterButton.disabled = false;
+        saveLetterDraftButton.textContent = "SAVE DRAFT"; saveLetterButton.innerHTML = "SAVE LETTER <span>→</span>";
+    }
+}
+
+async function deleteActiveLetter() {
+    if (!activeLetter || isDeletingLetter) return;
+    isDeletingLetter = true; confirmLetterDeleteButton.disabled = true; confirmLetterDeleteButton.textContent = "DELETING…";
+    try {
+        await requestLetters(`/${encodeURIComponent(activeLetter.id)}`, { method: "DELETE" });
+        letters = letters.filter(letter => letter.id !== activeLetter.id);
+        activeLetter = null;
+        closeModal(letterDeleteModal); closeModal(letterReaderModal);
+        renderLetters(); showToast("Letter deleted");
+    } catch (error) { showToast(error.message); }
+    finally { isDeletingLetter = false; confirmLetterDeleteButton.disabled = false; confirmLetterDeleteButton.textContent = "DELETE LETTER"; }
+}
 
 function escapeHTML(value) {
 
@@ -2251,7 +2481,7 @@ async function loadMemories() {
     try {
 
         const response =
-            await fetch(
+            await apiFetch(
                 `${API_URL}/api/memories`
             );
 
@@ -3399,6 +3629,35 @@ favoritesButton.addEventListener(
         openFavoritesModal();
     }
 );
+
+lettersButton.addEventListener("click", () => {
+    lettersButton.focus({ preventScroll: true });
+    openLetters();
+});
+
+writeLetterButton.addEventListener("click", () => openLetterEditor());
+closeLettersButton.addEventListener("click", () => closeModal(lettersModal));
+closeLetterEditorButton.addEventListener("click", () => closeLetterEditor());
+closeLetterReaderButton.addEventListener("click", () => closeModal(letterReaderModal));
+closeLetterDeleteButton.addEventListener("click", () => closeModal(letterDeleteModal));
+cancelLetterDeleteButton.addEventListener("click", () => closeModal(letterDeleteModal));
+confirmLetterDeleteButton.addEventListener("click", deleteActiveLetter);
+editLetterButton.addEventListener("click", () => { closeModal(letterReaderModal, false); openLetterEditor(activeLetter); });
+deleteLetterButton.addEventListener("click", () => { closeModal(letterReaderModal, false); openModal(letterDeleteModal); });
+lettersSearchInput.addEventListener("input", renderLetters);
+letterForm.addEventListener("input", updateLetterDirtyState);
+saveLetterDraftButton.addEventListener("click", () => saveLetter(true));
+letterForm.addEventListener("submit", event => { event.preventDefault(); saveLetter(false); });
+lettersGrid.addEventListener("click", event => {
+    const card = event.target.closest("[data-letter-id]");
+    const letter = letters.find(item => item.id === card?.dataset.letterId);
+    if (letter) showLetter(letter);
+});
+
+document.querySelectorAll("[data-close-letters]").forEach(element => element.addEventListener("click", () => closeModal(lettersModal)));
+document.querySelectorAll("[data-close-letter-editor]").forEach(element => element.addEventListener("click", () => closeLetterEditor()));
+document.querySelectorAll("[data-close-letter-reader]").forEach(element => element.addEventListener("click", () => closeModal(letterReaderModal)));
+document.querySelectorAll("[data-close-letter-delete]").forEach(element => element.addEventListener("click", () => closeModal(letterDeleteModal)));
 
 
 searchButton.addEventListener(
@@ -4822,7 +5081,7 @@ editMemoryForm.addEventListener(
 
         try {
 
-            const response = await fetch(
+            const response = await apiFetch(
                 `${API_URL}/api/memories/${encodeURIComponent(memoryId)}`,
                 {
                     method: "PATCH",
@@ -5053,7 +5312,7 @@ confirmDeleteMemoryButton.addEventListener(
 
         try {
 
-            const response = await fetch(
+            const response = await apiFetch(
                 `${API_URL}/api/memories/${encodeURIComponent(memoryId)}`,
                 { method: "DELETE" }
             );
@@ -5639,7 +5898,7 @@ async function uploadMemoryItem(item, date, caption, privateNote) {
         formData.append("group_order", String(item.order));
     }
 
-    const response = await fetch(`${API_URL}/api/upload`, {
+    const response = await apiFetch(`${API_URL}/api/upload`, {
         method: "POST",
         body: formData
     });
@@ -6606,6 +6865,14 @@ document.addEventListener(
 
                     closeUploadModal();
 
+                } else if (letterEditorModal.classList.contains("open")) {
+
+                    closeLetterEditor();
+
+                } else if (letterDeleteModal.classList.contains("open")) {
+
+                    closeModal(letterDeleteModal);
+
                 } else {
 
                     closeAllModals();
@@ -6670,7 +6937,112 @@ document.addEventListener(
    INITIALIZE
    ========================================================= */
 
+let galleryInitialized = false;
+
+function showLogin(message = "") {
+    authRedirecting = false;
+    isAuthenticated = false;
+    document.body.classList.add("auth-locked");
+    pauseGalleryVideoPreviews();
+    pauseOurFilmsVideo();
+    closeAllModals(false);
+    loginScreen.hidden = false;
+    loginError.textContent = message;
+    loginSubmitButton.disabled = false;
+    loginSubmitButton.innerHTML = "<span>ENTER GALLERY</span><span aria-hidden=\"true\">→</span>";
+    requestAnimationFrame(() => loginUsername.focus({ preventScroll: true }));
+}
+
+function showGallery() {
+    isAuthenticated = true;
+    authRedirecting = false;
+    document.body.classList.remove("auth-locked");
+    loginScreen.hidden = true;
+    loginError.textContent = "";
+}
+
+function clearPrivateState() {
+    memories = [];
+    letters = [];
+    expandedMemorySets.clear();
+    localStorage.removeItem("el-gallery-favorites");
+    pauseGalleryVideoPreviews();
+    pauseOurFilmsVideo();
+    cleanupGalleryVideoPreviews();
+    monthsContainer.innerHTML = "";
+}
+
+function handleSessionExpired() {
+    if (authRedirecting) return;
+    authRedirecting = true;
+    clearPrivateState();
+    showLogin("Your session expired. Please sign in again.");
+}
+
+async function submitLogin(event) {
+    event.preventDefault();
+    const username = loginUsername.value.trim();
+    const password = loginPassword.value;
+    loginError.textContent = "";
+    if (!username || !password) {
+        loginError.textContent = "Enter your username and password.";
+        return;
+    }
+    loginSubmitButton.disabled = true;
+    loginSubmitButton.innerHTML = "<span>ENTERING…</span><span aria-hidden=\"true\">·</span>";
+    try {
+        const response = await apiFetch(`${API_URL}/api/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            if (response.status === 503) {
+                throw new Error("Private login is not configured on the server.");
+            }
+            if (response.status === 429) {
+                throw new Error(data.error || "Too many attempts. Try again later.");
+            }
+            throw new Error("Incorrect username or password.");
+        }
+        loginForm.reset();
+        showGallery();
+        await initializeGallery();
+    } catch (error) {
+        loginError.textContent = error instanceof TypeError
+            ? "Unable to reach the private archive. Check that the Worker is online and try again."
+            : error.message;
+        loginSubmitButton.disabled = false;
+        loginSubmitButton.innerHTML = "<span>ENTER GALLERY</span><span aria-hidden=\"true\">→</span>";
+        loginPassword.focus({ preventScroll: true });
+    }
+}
+
+async function logout() {
+    logoutButton.disabled = true;
+    try {
+        await apiFetch(`${API_URL}/api/auth/logout`, { method: "POST" });
+    } finally {
+        clearPrivateState();
+        logoutButton.disabled = false;
+        showLogin();
+    }
+}
+
+loginForm.addEventListener("submit", submitLogin);
+togglePasswordButton.addEventListener("click", () => {
+    const visible = loginPassword.type === "text";
+    loginPassword.type = visible ? "password" : "text";
+    togglePasswordButton.setAttribute("aria-pressed", String(!visible));
+    togglePasswordButton.setAttribute("aria-label", visible ? "Show password" : "Hide password");
+});
+logoutButton.addEventListener("click", logout);
+
 async function initializeGallery() {
+
+    if (galleryInitialized) return;
+    galleryInitialized = true;
 
     document.body.classList.add(
         "page-entering"
@@ -6724,4 +7096,19 @@ window.addEventListener(
 );
 
 
-initializeGallery();
+document.body.classList.add("auth-locked");
+
+(async function bootstrapAuth() {
+    try {
+        const response = await apiFetch(`${API_URL}/api/auth/me`);
+        const data = await response.json().catch(() => ({}));
+        if (response.ok && data.authenticated) {
+            showGallery();
+            await initializeGallery();
+        } else {
+            showLogin();
+        }
+    } catch {
+        showLogin("Could not connect to the private gallery.");
+    }
+})();
