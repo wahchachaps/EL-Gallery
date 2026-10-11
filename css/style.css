@@ -5429,6 +5429,258 @@ button:active {
     .login-footer { margin-top: 34px; }
     .account-indicator, .logout-button { display: none; }
 }
+
+@media (max-width: 767px) {
+    html, body {
+        overflow-x: hidden;
+    }
+
+    .gallery-track {
+        display: block;
+        width: 100%;
+        height: auto;
+        min-height: 100vh;
+        overflow-x: hidden;
+        overflow-y: visible;
+        overscroll-behavior-y: auto;
+    }
+
+    .page-section {
+        width: 100%;
+        min-width: 0;
+        height: auto;
+        min-height: 100svh;
+        flex: none;
+    }
+
+    .intro-section,
+    .end-section {
+        min-height: 100svh;
+    }
+
+    .months-wrapper {
+        display: block;
+        height: auto;
+    }
+
+    .month-section {
+        width: 100%;
+        min-width: 0;
+        min-height: 0;
+        height: auto;
+        display: block;
+        padding: calc(var(--navbar-height) + 26px) 14px 46px;
+        overflow: visible;
+        scroll-margin-top: var(--navbar-height);
+    }
+
+    .month-heading {
+        align-items: flex-start;
+        gap: 14px;
+        margin-bottom: 18px;
+        padding: 0 4px;
+    }
+
+    .month-title {
+        font-size: clamp(32px, 10vw, 44px);
+    }
+
+    .month-roll-info {
+        padding-top: 7px;
+        text-align: right;
+    }
+
+    .film-shell {
+        width: 100%;
+    }
+
+    .film-strip {
+        width: 100%;
+        min-width: 0;
+        height: auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 18px;
+        padding: 30px 14px 34px;
+        overflow: visible;
+    }
+
+    .memory-frame,
+    .memory-frame.wide,
+    .memory-frame.portrait {
+        width: 100%;
+        max-width: 100%;
+        height: auto;
+        min-height: 0;
+        aspect-ratio: 4 / 3;
+        flex: 0 0 auto;
+    }
+
+    .memory-frame.wide {
+        aspect-ratio: 16 / 10;
+    }
+
+    .memory-frame.portrait {
+        aspect-ratio: 3 / 4;
+    }
+
+    .memory-media {
+        object-fit: contain;
+        background: #18110f;
+    }
+
+    .memory-set-collapse {
+        width: 100%;
+        height: auto;
+        min-height: 150px;
+        flex: 0 0 auto;
+        aspect-ratio: 16 / 10;
+    }
+
+    .empty-film {
+        width: 100%;
+        height: 170px;
+        flex: 0 0 auto;
+    }
+
+    .month-section.is-reveal-pending .memory-frame,
+    .month-section.is-reveal-pending .empty-film {
+        transform: translateY(8px);
+    }
+
+    .month-section.is-reveal-pending.is-visible .memory-frame,
+    .month-section.is-reveal-pending.is-visible .empty-film {
+        animation-name: mobile-frame-enter;
+    }
+}
+
+@keyframes mobile-frame-enter {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) and (max-width: 767px) {
+    .month-section.is-reveal-pending.is-visible .memory-frame,
+    .month-section.is-reveal-pending.is-visible .empty-film {
+        animation: none;
+        opacity: 1;
+        transform: none;
+    }
+}
+
+/* Phone film roll: the strip follows the page instead of creating a second scroller. */
+@media (max-width: 767px) {
+    .film-shell {
+        width: 100%;
+        filter: drop-shadow(0 22px 30px rgba(0, 0, 0, .38));
+    }
+
+    .film-shell::before {
+        width: 100%;
+        height: 230px;
+        left: 0;
+        top: 18%;
+        background: linear-gradient(180deg, transparent, rgba(255, 116, 76, .07), rgba(255, 103, 145, .04), transparent);
+    }
+
+    .film-strip {
+        box-sizing: border-box;
+        width: 100%;
+        min-width: 0;
+        min-height: 100%;
+        height: auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 18px;
+        padding: 52px 30px 58px;
+        overflow: visible;
+        background: linear-gradient(90deg, #1b1411, #100c0c 50%, #18110f);
+        border-top: 0;
+        border-right: 1px solid rgba(255, 192, 180, .07);
+        border-bottom: 0;
+        border-left: 1px solid rgba(255, 192, 180, .07);
+    }
+
+    .film-strip::before,
+    .film-strip::after {
+        top: 0;
+        bottom: auto;
+        left: 10px;
+        width: 16px;
+        height: 100%;
+        background: repeating-linear-gradient(
+            0deg,
+            transparent 0,
+            transparent 9px,
+            #5c4942 9px,
+            #5c4942 24px,
+            transparent 24px,
+            transparent 37px
+        );
+    }
+
+    .film-strip::after {
+        right: 10px;
+        left: auto;
+    }
+
+    .film-edge-label {
+        z-index: 1;
+        top: 24px;
+        bottom: auto;
+        color: #80665f;
+        writing-mode: vertical-rl;
+        text-orientation: mixed;
+    }
+
+    .film-edge-label.left {
+        left: 32px;
+    }
+
+    .film-edge-label.right {
+        right: 32px;
+    }
+
+    .memory-frame,
+    .memory-frame.wide,
+    .memory-frame.portrait {
+        width: 100%;
+        max-width: 100%;
+        height: auto;
+        min-height: 0;
+        flex: 0 0 auto;
+    }
+
+    .memory-frame {
+        aspect-ratio: 4 / 3;
+    }
+
+    .memory-frame.wide {
+        aspect-ratio: 16 / 10;
+    }
+
+    .memory-frame.portrait {
+        aspect-ratio: 3 / 4;
+    }
+
+    .memory-set-collapse {
+        width: 100%;
+        max-width: 100%;
+        height: auto;
+        min-height: 150px;
+        flex: 0 0 auto;
+        aspect-ratio: 16 / 10;
+    }
+}
 @media (prefers-reduced-motion: reduce) {
     .login-screen, .login-submit, .login-submit-arrow, .login-field input, .password-control button { animation: none; transition: none; }
 }
@@ -5594,4 +5846,63 @@ button:active {
 }
 @media (prefers-reduced-motion: reduce) {
     .letter-editor-dialog form, .letter-editor-pen, .letter-save-success .letter-card:first-child { animation: none; }
+}
+
+/* Letter Creator scrolling: keep the dialog primary, and make rare textarea overflow quiet. */
+.letter-editor-dialog,
+.letter-reader-dialog {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(126, 78, 68, .38) transparent;
+    scrollbar-gutter: stable;
+    scroll-padding-block: 24px;
+}
+.letter-editor-dialog::-webkit-scrollbar,
+.letter-reader-dialog::-webkit-scrollbar,
+.letter-editor-dialog .field textarea::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+.letter-editor-dialog::-webkit-scrollbar-track,
+.letter-reader-dialog::-webkit-scrollbar-track,
+.letter-editor-dialog .field textarea::-webkit-scrollbar-track {
+    background: transparent;
+}
+.letter-editor-dialog::-webkit-scrollbar-thumb,
+.letter-reader-dialog::-webkit-scrollbar-thumb,
+.letter-editor-dialog .field textarea::-webkit-scrollbar-thumb {
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: rgba(126, 78, 68, .34);
+    background-clip: padding-box;
+}
+.letter-editor-dialog::-webkit-scrollbar-thumb:hover,
+.letter-reader-dialog::-webkit-scrollbar-thumb:hover,
+.letter-editor-dialog .field textarea::-webkit-scrollbar-thumb:hover {
+    background: rgba(126, 78, 68, .56);
+    background-clip: padding-box;
+}
+.letter-editor-dialog .field textarea {
+    max-height: min(560px, 52vh);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(126, 78, 68, .32) transparent;
+    overscroll-behavior: contain;
+}
+
+@media (max-width: 700px) {
+    .letter-editor-dialog,
+    .letter-reader-dialog {
+        scrollbar-width: none;
+        scrollbar-color: transparent transparent;
+        scrollbar-gutter: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .letter-editor-dialog::-webkit-scrollbar,
+    .letter-reader-dialog::-webkit-scrollbar,
+    .letter-editor-dialog .field textarea::-webkit-scrollbar {
+        display: none;
+    }
+    .letter-editor-dialog .field textarea {
+        max-height: min(430px, 42dvh);
+        scrollbar-width: none;
+    }
 }

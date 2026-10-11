@@ -62,6 +62,10 @@ async function confirmSessionExpired(requestGeneration) {
 const CURRENT_YEAR = 2026;
 const START_MONTH = 6;
 
+function isMobileGallery() {
+    return window.matchMedia("(max-width: 767px)").matches;
+}
+
 const MONTHS = [
     "January",
     "February",
@@ -793,10 +797,20 @@ function letterEditorValuesEqual(left, right) {
     return LETTER_EDITOR_KEYS.every(key => left?.[key] === right?.[key]);
 }
 
+function resizeLetterMessageInput() {
+    const styles = getComputedStyle(letterMessageInput);
+    const minHeight = Number.parseFloat(styles.minHeight) || 0;
+    const maxHeight = Number.parseFloat(styles.maxHeight) || Number.POSITIVE_INFINITY;
+
+    letterMessageInput.style.height = "auto";
+    const naturalHeight = Math.max(letterMessageInput.scrollHeight, minHeight);
+    letterMessageInput.style.height = `${Math.min(naturalHeight, maxHeight)}px`;
+    letterMessageInput.style.overflowY = naturalHeight > maxHeight ? "auto" : "hidden";
+}
+
 function updateLetterDirtyState() {
     letterCharacterCount.textContent = `${letterMessageInput.value.length} / 12000`;
-    letterMessageInput.style.height = "auto";
-    letterMessageInput.style.height = `${Math.max(letterMessageInput.scrollHeight, 330)}px`;
+    resizeLetterMessageInput();
     letterEditorDirty = !letterEditorSnapshot || !letterEditorValuesEqual(
         normalizeLetterEditorValues(formLetter()),
         letterEditorSnapshot
@@ -2310,14 +2324,14 @@ function syncGalleryVideoPlayback() {
 
 
 function setupGalleryVideoObserver() {
-
-    if (
-        galleryVideoObserver ||
-        typeof IntersectionObserver !== "function"
-    ) {
+    if (typeof IntersectionObserver !== "function") {
         return;
     }
 
+    galleryVideoObserver?.disconnect();
+    observedGalleryVideos.clear();
+    galleryVideoVisibility.clear();
+    activeGalleryPreviewVideo = null;
 
     galleryVideoObserver =
         new IntersectionObserver(
@@ -2338,7 +2352,7 @@ function setupGalleryVideoObserver() {
                 syncGalleryVideoPlayback();
             },
             {
-                root: galleryTrack,
+                root: isMobileGallery() ? null : galleryTrack,
                 threshold: [
                     0,
                     GALLERY_VIDEO_VISIBILITY_THRESHOLD,
@@ -3075,7 +3089,7 @@ function setupMonthReveals() {
                 });
             },
             {
-                root: galleryTrack,
+                root: isMobileGallery() ? null : galleryTrack,
                 rootMargin: "0px 16%",
                 threshold: 0.12
             }
@@ -3301,11 +3315,14 @@ function toggleGalleryMemorySet(
 
         if (target) {
             const targetRect = target.getBoundingClientRect();
-            const previousScrollBehavior = galleryTrack.style.scrollBehavior;
-
-            galleryTrack.style.scrollBehavior = "auto";
-            galleryTrack.scrollLeft += targetRect.left - desiredLeft;
-            galleryTrack.style.scrollBehavior = previousScrollBehavior;
+            if (isMobileGallery()) {
+                target.scrollIntoView({ block: "center", behavior: "auto" });
+            } else {
+                const previousScrollBehavior = galleryTrack.style.scrollBehavior;
+                galleryTrack.style.scrollBehavior = "auto";
+                galleryTrack.scrollLeft += targetRect.left - desiredLeft;
+                galleryTrack.style.scrollBehavior = previousScrollBehavior;
+            }
 
             if (restoreFocus) {
                 const focusTarget =
@@ -3381,6 +3398,8 @@ galleryTrack.addEventListener(
     "wheel",
     event => {
 
+        if (isMobileGallery()) return;
+
         if (
             document.querySelector(
                 ".modal.open"
@@ -3414,6 +3433,8 @@ galleryTrack.addEventListener(
 galleryTrack.addEventListener(
     "pointerdown",
     event => {
+
+        if (isMobileGallery()) return;
 
         if (
             event.pointerType !== "mouse" ||
@@ -3523,6 +3544,14 @@ galleryTrack.addEventListener(
 
 function scrollToIntro() {
 
+    if (isMobileGallery()) {
+        document.getElementById("introSection")?.scrollIntoView({
+            block: "start",
+            behavior: prefersReducedMotion() ? "auto" : "smooth"
+        });
+        return;
+    }
+
     galleryTrack.scrollTo({
         left: 0,
         behavior: prefersReducedMotion() ? "auto" : "smooth"
@@ -3543,12 +3572,17 @@ function scrollToMonth(index) {
     }
 
 
-    galleryTrack.scrollTo({
-        left:
-            section.offsetLeft,
+    if (isMobileGallery()) {
+        section.scrollIntoView({
+            block: "start",
+            behavior: prefersReducedMotion() ? "auto" : "smooth"
+        });
+        return;
+    }
 
-        behavior:
-            prefersReducedMotion() ? "auto" : "smooth"
+    galleryTrack.scrollTo({
+        left: section.offsetLeft,
+        behavior: prefersReducedMotion() ? "auto" : "smooth"
     });
 }
 
@@ -3587,11 +3621,9 @@ function getNearestSectionIndex() {
     sections.forEach(
         (section, index) => {
 
-            const currentDistance =
-                Math.abs(
-                    section.offsetLeft -
-                    galleryTrack.scrollLeft
-                );
+            const currentDistance = isMobileGallery()
+                ? Math.abs(section.getBoundingClientRect().top - parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--navbar-height")))
+                : Math.abs(section.offsetLeft - galleryTrack.scrollLeft);
 
 
             if (
@@ -3634,15 +3666,17 @@ function moveSection(direction) {
         );
 
 
+    if (isMobileGallery()) {
+        sections[next].scrollIntoView({
+            block: "start",
+            behavior: prefersReducedMotion() ? "auto" : "smooth"
+        });
+        return;
+    }
+
     galleryTrack.scrollTo({
-
-        left:
-            sections[next]
-                .offsetLeft,
-
-        behavior:
-            prefersReducedMotion() ? "auto" : "smooth"
-
+        left: sections[next].offsetLeft,
+        behavior: prefersReducedMotion() ? "auto" : "smooth"
     });
 }
 
@@ -3652,19 +3686,12 @@ function moveSection(direction) {
    ========================================================= */
 
 function updateTimeline() {
-
-    const maxScroll =
-        galleryTrack.scrollWidth -
-        galleryTrack.clientWidth;
-
-
-    const progress =
-        maxScroll > 0
-
-        ? galleryTrack.scrollLeft /
-          maxScroll
-
-        : 0;
+    const mobile = isMobileGallery();
+    const maxScroll = mobile
+        ? document.documentElement.scrollHeight - window.innerHeight
+        : galleryTrack.scrollWidth - galleryTrack.clientWidth;
+    const currentScroll = mobile ? window.scrollY : galleryTrack.scrollLeft;
+    const progress = maxScroll > 0 ? currentScroll / maxScroll : 0;
 
 
     const percent =
@@ -3685,9 +3712,9 @@ function updateTimeline() {
             );
 
 
-    const center =
-        galleryTrack.scrollLeft +
-        galleryTrack.clientWidth / 2;
+    const center = mobile
+        ? window.scrollY + window.innerHeight / 2
+        : galleryTrack.scrollLeft + galleryTrack.clientWidth / 2;
 
 
     let activeMonth = -1;
@@ -3699,16 +3726,9 @@ function updateTimeline() {
         )
         .forEach(section => {
 
-            if (
-                center >=
-                    section.offsetLeft
-
-                &&
-
-                center <
-                    section.offsetLeft +
-                    section.offsetWidth
-            ) {
+            const start = mobile ? section.offsetTop : section.offsetLeft;
+            const size = mobile ? section.offsetHeight : section.offsetWidth;
+            if (center >= start && center < start + size) {
 
                 activeMonth =
                     Number(
@@ -3791,8 +3811,9 @@ function updateTimeline() {
         "active",
 
         activeMonth === -1 &&
-        galleryTrack.scrollLeft <
-        window.innerWidth * 0.5
+        (mobile
+            ? window.scrollY < window.innerHeight * 0.5
+            : galleryTrack.scrollLeft < window.innerWidth * 0.5)
     );
 
 
@@ -3850,6 +3871,10 @@ favoritesButton.addEventListener(
         openFavoritesModal();
     }
 );
+
+window.addEventListener("scroll", () => {
+    if (isMobileGallery()) updateTimeline();
+}, { passive: true });
 
 lettersButton.addEventListener("click", () => {
     lettersButton.focus({ preventScroll: true });
@@ -7414,10 +7439,22 @@ window.addEventListener("focus", () => {
 });
 
 
-window.addEventListener(
-    "resize",
-    updateTimeline
-);
+let lastMobileGalleryLayout = isMobileGallery();
+
+window.addEventListener("resize", () => {
+    const mobile = isMobileGallery();
+    if (mobile !== lastMobileGalleryLayout) {
+        lastMobileGalleryLayout = mobile;
+        galleryVideoObserver?.disconnect();
+        galleryVideoObserver = null;
+        observedGalleryVideos.clear();
+        galleryVideoVisibility.clear();
+        setupGalleryVideoObserver();
+        observeGalleryVideoPreviews();
+        setupMonthReveals();
+    }
+    updateTimeline();
+});
 
 
 document.body.classList.add("auth-locked");
